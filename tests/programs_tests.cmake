@@ -55,6 +55,15 @@ if(TARGET gui_forms_devkit_view_process_control)
     target_include_directories(gui_forms_process_control_tests PRIVATE ${_gf_devkit_root}/views/process_control)
 endif()
 
+# The demonstrator views: Code Zoom (its C++ language, zoom, bench report
+# and sheet), the data workbench (find panel, sort, column chooser, layouts,
+# summaries, dashboard) and Touch Start (its touch input and tiles).
+foreach(_gf_view IN ITEMS code_zoom)
+    if(TARGET gui_forms_devkit_view_${_gf_view})
+        gui_forms_devkit_suite(gui_forms_${_gf_view}_tests ${_gf_view}_tests.cpp gui_forms_devkit_view_${_gf_view})
+    endif()
+endforeach()
+
 if(TARGET gui_forms_devkit_view_correspondence)
     gui_forms_devkit_suite(gui_forms_correspondence_tests correspondence_tests.cpp gui_forms_devkit_view_correspondence)
     gui_forms_devkit_suite(gui_forms_correspondence_interaction_tests correspondence_interaction_tests.cpp
