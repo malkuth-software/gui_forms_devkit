@@ -24,7 +24,7 @@
 // not be written; the reason goes to stderr). Without --capture it prints
 // usage and returns 2.
 
-#include "gallery.hpp"
+#include "gui_forms_gallery/gallery.hpp"
 #include "program_options.hpp"
 #include "gui_forms/capture/offscreen_raster/offscreen_raster.hpp"
 #include "gui_forms/paint_framebuffer.hpp"
