@@ -88,6 +88,18 @@ view shows one of this repository's files
 (`GUI_FORMS_DEVKIT_CODE_ZOOM_SOURCE`, default `views/code_zoom/code_sheet.cpp`)
 where GUI.Forms showed one of its own.
 
+## CI
+
+| Workflow | When | What |
+|---|---|---|
+| `lockstep.yml` | `repository_dispatch` `gui-forms-advanced` from GUI.Forms (and Run workflow) | builds everything against exactly that GUI.Forms build, packages and smoke-launches it, runs the cache proof; on success publishes the packages and the devkit cache into the pre-release `gf-<GUI.Forms sha>` and prunes to the five newest; on failure opens one issue |
+| `cache-proof.yml` | every lockstep run, nightly, Run workflow | the devkit against GUI.Forms R, R-1, the newest stable and (weekly) the floor, with the devkit cache of the previous lockstep run: at least 99% of the computed expected hits for R and R-1; GUI.Forms itself at R from its own cache: at least 98% |
+| `pull-request.yml` | pull requests, pushes to main | harness and packaging tests, strict checks, a build against the newest green build and (pull requests) the floor's |
+| `release.yml` | tag `v<x.y.z>` (Run workflow: a draft) | Pocket Reference and the programs as per-platform downloads with `SHA256SUMS.txt` and the GUI.Forms build they were made on; no harness or cache |
+
+`build.yml` is the one build all of them call (`.github/actions/devkit-setup`
+sets up the toolchain and compile environment).
+
 ## Checks
 
 ```sh

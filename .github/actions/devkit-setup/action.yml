@@ -1,0 +1,117 @@
+# The devkit build's toolchain and compile environment on one runner, shared
+# by build.yml, cache-proof.yml and release.yml. It leaves GUI.Forms to the
+# caller (resolve_gui_forms.py resolve and fetch: the SDK, and the runtime
+# asset when the build publishes one); `runtime` then verifies a restored
+# runtime and builds one only when none verifies (DEVKIT_DESIGN.md section 2).
+#
+# Afterwards: HARNESS_PROJECT, HARNESS_WORKSPACE and HARNESS_ENV_PREFIX for
+# the harness tools, GUI_FORMS_DEVKIT_LLVM_RUNTIME for cmake/llvm22.cmake on
+# macOS and Linux, the ccache settings every published cache was filled with
+# (CCACHE_BASEDIR is the workspace, so a cache restores on any runner), and
+# the output `identity` (compiler_identity.py).
+name: devkit setup
+description: Toolchain, compile environment and project settings for a devkit build
+inputs:
+  platform:
+    description: linux-x64, linux-arm64, macos-arm64 or windows-x64
+    required: true
+  save-packages:
+    description: whether this run may save the Ubuntu package cache (main only)
+    default: 'false'
+outputs:
+  identity:
+    description: the compiler and runner image identity, for cache keys
+    value: ${{ steps.compiler.outputs.identity }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: '3.12'
+    - name: Name the project
+      shell: bash
+      run: |
+        workspace="$GITHUB_WORKSPACE"
+        if command -v cygpath >/dev/null; then workspace="$(cygpath -m "$workspace")"; fi
+        {
+          echo "HARNESS_PROJECT=$workspace/harness/projects/gui_forms_devkit.toml"
+          echo "HARNESS_WORKSPACE=$workspace"
+          echo "HARNESS_ENV_PREFIX=GUI_FORMS_DEVKIT"
+        } >> "$GITHUB_ENV"
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      id: toolchain-python
+      if: runner.os == 'Windows'
+      with:
+        python-version: '3.14'
+        update-environment: false
+    - name: Restore the published Windows toolchain
+      id: toolchain
+      if: runner.os == 'Windows'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TOOLCHAIN_PYTHON: ${{ steps.toolchain-python.outputs.python-path }}
+      run: '"$TOOLCHAIN_PYTHON" harness/harness/windows_toolchain.py restore'
+    - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+      if: runner.os == 'Windows' && steps.toolchain.outputs.restored != 'true'
+      with:
+        msystem: CLANG64
+        update: true
+        path-type: inherit
+        install: ${{ steps.toolchain.outputs.packages }}
+    - name: Install macOS dependencies
+      if: runner.os == 'macOS'
+      shell: bash
+      env:
+        HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        HOMEBREW_NO_AUTO_UPDATE: '1'
+      run: |
+        brew install cmake ninja ccache llvm@22
+        echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+        echo "GUI_FORMS_DEVKIT_LLVM_RUNTIME=$GITHUB_WORKSPACE/.build/toolchain/llvm-22.1.8-macos14" >> "$GITHUB_ENV"
+    - name: Name the Linux package cache
+      id: linux-image
+      if: runner.os == 'Linux'
+      shell: bash
+      run: echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      id: linux-packages
+      if: runner.os == 'Linux'
+      with:
+        path: ${{ runner.temp }}/apt-archives
+        key: devkit-debs-v1-${{ runner.arch }}-${{ hashFiles('harness/harness/install_linux_ci_packages.sh', 'harness/projects/gui_forms_devkit.toml') }}-${{ steps.linux-image.outputs.image }}
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sh harness/harness/install_linux_ci_packages.sh devkit "$RUNNER_TEMP/apt-archives"
+        echo /usr/lib/llvm-22/bin >> "$GITHUB_PATH"
+        directory="$(python harness/harness/linux_runtime_manifest.py --directory-name)"
+        echo "GUI_FORMS_DEVKIT_LLVM_RUNTIME=$GITHUB_WORKSPACE/.build/toolchain/$directory" >> "$GITHUB_ENV"
+    - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      if: runner.os == 'Linux' && inputs.save-packages == 'true' && steps.linux-packages.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}/apt-archives
+        key: ${{ steps.linux-packages.outputs.cache-primary-key }}
+    - name: Identify the compiler
+      id: compiler
+      shell: bash
+      run: python harness/harness/compiler_identity.py
+    - name: Configure the compiler cache
+      shell: bash
+      run: |
+        cache_dir="$GITHUB_WORKSPACE/.ccache"
+        cache_base="$GITHUB_WORKSPACE"
+        if command -v cygpath >/dev/null; then
+          cache_dir="$(cygpath -m "$cache_dir")"
+          cache_base="$(cygpath -m "$cache_base")"
+        fi
+        {
+          echo "CCACHE_DIR=$cache_dir"
+          echo "CCACHE_BASEDIR=$cache_base"
+          echo "CCACHE_COMPILERCHECK=content"
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros"
+          echo "CCACHE_MAXSIZE=500M"
+          echo "LANG=C.UTF-8"
+          echo "DEVKIT_JOB_START=$(date +%s)"
+        } >> "$GITHUB_ENV"

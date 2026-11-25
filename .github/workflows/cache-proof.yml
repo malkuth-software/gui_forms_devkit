@@ -1,0 +1,232 @@
+# The cache proof (DEVKIT_DESIGN.md section 2): the devkit pins GUI.Forms by
+# major only, so it proves that the caches keep loading as GUI.Forms advances.
+# For devkit commit N on each platform:
+#
+#   row       GUI.Forms SDK from                      devkit cache from        passes when
+#   current   the lockstep revision R                 the newest gf- release   hits >= 99% of expected
+#   previous  R-1, the previous green build           the same                 hits >= 99% of expected
+#   stable    the newest v1.* release                 the same                 recorded; warns below 50%
+#   floor     devkit.toml's minimum (weekly, manual)  the same                 recorded; warns below 50%
+#
+# Expected hits are computed, not guessed: an object whose recorded inputs
+# (ninja -t deps of the producer build) are byte identical here must hit
+# (devkit_cache.py expect). The gui-forms rows build GUI.Forms itself at R
+# from its own published cache: R's must give at least 98%, R-1's is
+# recorded. Each platform uploads cache-proof-<platform>.json; the rows go to
+# the job summary.
+name: cache proof
+on:
+  workflow_call:
+    inputs:
+      revision:
+        description: the GUI.Forms commit of the lockstep run (R)
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: the GUI.Forms commit to prove against (empty for the newest green build)
+        type: string
+        default: ''
+  schedule:
+    - cron: '41 4 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: devkit-cache-proof-${{ inputs.revision || github.ref }}
+  cancel-in-progress: false
+jobs:
+  rows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    outputs:
+      revision: ${{ steps.rows.outputs.revision }}
+      previous: ${{ steps.rows.outputs.previous }}
+      devkit: ${{ steps.rows.outputs.devkit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      # Each row as resolver arguments; a row with no build to take (no earlier
+      # green build, no stable release yet) is left out with a notice.
+      - name: Resolve the rows
+        id: rows
+        run: |
+          resolve() {  # <directory> <arguments...>: prints the resolved commit, or nothing
+            mkdir -p "$1"
+            directory=$1; shift
+            if python -B harness/harness/resolve_gui_forms.py resolve --workspace "$directory" "$@" >&2; then
+              python -c 'import json,sys; print(json.load(open(sys.argv[1]))["revision"])' "$directory/.ci/gui_forms-resolved.json"
+            fi
+          }
+          if [ -n "${{ inputs.revision }}" ]; then
+            revision=$(resolve "$RUNNER_TEMP/current" --revision "${{ inputs.revision }}")
+          else
+            revision=$(resolve "$RUNNER_TEMP/current")
+          fi
+          if [ -z "$revision" ]; then echo "::error::no green GUI.Forms build to prove against"; exit 1; fi
+          previous=$(resolve "$RUNNER_TEMP/previous" --before "$revision")
+          stable=$(resolve "$RUNNER_TEMP/stable" --channel stable)
+          floor=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "1" ]; then
+            floor=$(resolve "$RUNNER_TEMP/floor" --floor)
+          fi
+          rows="[{\"row\":\"current\",\"arguments\":\"--revision $revision\",\"label\":\"$revision\"}"
+          if [ -n "$previous" ]; then
+            rows="$rows,{\"row\":\"previous\",\"arguments\":\"--revision $previous\",\"label\":\"$previous\"}"
+          else
+            echo "::notice::no green GUI.Forms build before $revision: the previous row is skipped"
+          fi
+          if [ -n "$stable" ]; then
+            rows="$rows,{\"row\":\"stable\",\"arguments\":\"--channel stable\",\"label\":\"$stable\"}"
+          else
+            echo "::notice::no stable GUI.Forms release in the major yet: the stable row is skipped"
+          fi
+          if [ -n "$floor" ]; then
+            rows="$rows,{\"row\":\"floor\",\"arguments\":\"--floor\",\"label\":\"$floor\"}"
+          fi
+          rows="$rows]"
+          {
+            echo "revision=$revision"
+            echo "previous=$previous"
+            echo "devkit=$rows"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "| platform | row | GUI.Forms | hits / compilations | expected | verdict |"
+            echo "|---|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  devkit:
+    needs: rows
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {runner: macos-15, platform: macos-arm64, shell: bash}
+          - {runner: windows-2022, platform: windows-x64, shell: 'msys2 {0}'}
+          - {runner: ubuntu-24.04, platform: linux-x64, shell: bash}
+          - {runner: ubuntu-24.04-arm, platform: linux-arm64, shell: bash}
+        row: ${{ fromJSON(needs.rows.outputs.devkit) }}
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: ${{ matrix.target.shell }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_DIR: .build/devkit
+      CC: clang
+      CXX: clang++
+      OBJCXX: clang++
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/devkit-setup
+        with:
+          platform: ${{ matrix.target.platform }}
+      - name: Resolve and fetch GUI.Forms (${{ matrix.row.row }})
+        run: |
+          python -B harness/harness/resolve_gui_forms.py resolve ${{ matrix.row.arguments }}
+          python -B harness/harness/resolve_gui_forms.py fetch --platform ${{ matrix.target.platform }}
+      - name: Verify the runtime, or build it
+        if: runner.os != 'Windows'
+        run: python -B harness/harness/restore_local.py runtime --platform ${{ matrix.target.platform }}
+      - name: Restore the devkit cache of the previous lockstep run
+        run: python -B harness/harness/devkit_cache.py restore --workspace . --platform ${{ matrix.target.platform }}
+      - name: Compute the expected hits
+        run: python -B harness/harness/devkit_cache.py expect --workspace . --row ${{ matrix.row.row }}
+      - name: Build
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=harness/harness/cmake/llvm22.cmake -DGUI_FORMS_DEVKIT_ALLOW_FULL_BUILD=ON
+          ccache --zero-stats
+          cmake --build "$BUILD_DIR" --parallel 4
+          mkdir -p .ci
+          ccache --print-stats > .ci/ccache-stats-${{ matrix.row.row }}.txt
+      - name: Prove the row
+        run: |
+          python -B harness/harness/devkit_cache.py prove --workspace . --platform ${{ matrix.target.platform }} \
+            --row ${{ matrix.row.row }} --stats .ci/ccache-stats-${{ matrix.row.row }}.txt \
+            --gui-forms "${{ matrix.row.label }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: cache-proof-${{ matrix.target.platform }}-${{ matrix.row.row }}
+          path: |
+            .ci/cache-proof-${{ matrix.target.platform }}.json
+            .ci/cache-proof-expected-${{ matrix.row.row }}.json
+            .ci/ccache-stats-${{ matrix.row.row }}.txt
+
+  # GUI.Forms at R from its own published cache (R's, then R-1's), through
+  # the harness's restore_local.py and build environment as a developer's
+  # machine gets it. Windows is left out: its build first makes STXlib's own
+  # runtime ([bootstrap.windows-x64] prepare), which the harness's bootstrap
+  # runs and this job does not yet.
+  gui-forms:
+    needs: rows
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {runner: macos-15, platform: macos-arm64}
+          - {runner: ubuntu-24.04, platform: linux-x64}
+          - {runner: ubuntu-24.04-arm, platform: linux-arm64}
+        cache: [current, previous]
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CACHE_REVISION: ${{ matrix.cache == 'current' && needs.rows.outputs.revision || needs.rows.outputs.previous }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Skip without a previous build
+        id: skip
+        run: |
+          if [ -z "$CACHE_REVISION" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "::notice::no previous build"; fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.skip.outputs.skip != 'true'
+        with:
+          repository: malkuth-software/gui_forms
+          ref: ${{ needs.rows.outputs.revision }}
+          path: gui_forms
+          fetch-depth: 0
+          submodules: recursive
+      - uses: ./.github/actions/devkit-setup
+        if: steps.skip.outputs.skip != 'true'
+        with:
+          platform: ${{ matrix.target.platform }}
+      - name: Restore GUI.Forms' cache and runtime, and its build environment
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          export HARNESS_PROJECT="$GITHUB_WORKSPACE/harness/projects/gui_forms.toml"
+          echo "HARNESS_PROJECT=$HARNESS_PROJECT" >> "$GITHUB_ENV"
+          echo "HARNESS_ENV_PREFIX=GUI_FORMS" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sh harness/harness/install_linux_ci_packages.sh toolkit "$RUNNER_TEMP/apt-archives"
+          fi
+          python -B harness/harness/restore_local.py cache --platform ${{ matrix.target.platform }} --revision "$CACHE_REVISION"
+          python -B harness/harness/restore_local.py runtime --platform ${{ matrix.target.platform }}
+          python -B harness/harness/restore_local.py env --platform ${{ matrix.target.platform }}
+      - name: Build GUI.Forms at R
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          . .ci/local-build-env.sh
+          ccache --zero-stats
+          python gui_forms/tools/ci_build.py --install-only
+          mkdir -p .ci
+          ccache --print-stats > .ci/ccache-stats-gui-forms-${{ matrix.cache }}.txt
+      - name: Prove the row
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          python -B harness/harness/devkit_cache.py prove --workspace . --platform ${{ matrix.target.platform }} \
+            --row gui-forms-${{ matrix.cache }} --stats .ci/ccache-stats-gui-forms-${{ matrix.cache }}.txt \
+            --gui-forms "$CACHE_REVISION"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && steps.skip.outputs.skip != 'true'
+        with:
+          name: cache-proof-${{ matrix.target.platform }}-gui-forms-${{ matrix.cache }}
+          path: |
+            .ci/cache-proof-${{ matrix.target.platform }}.json
+            .ci/ccache-stats-gui-forms-${{ matrix.cache }}.txt

@@ -136,6 +136,18 @@ class ResolveTests(unittest.TestCase):
             {'build-' + sha(1): sdk_manifest('1.0.3'), 'build-' + sha(2): sdk_manifest('1.0.4')})
         self.assertEqual(self.run_resolve(fixture, revision=sha(1)[:12])['revision'], sha(1))
 
+    def test_before_takes_the_previous_green_build(self) -> None:
+        fixture: Fixture = Fixture(
+            [release('build-' + sha(1), '2026-11-20T00:00:00Z'), release('build-' + sha(2), '2026-11-21T00:00:00Z'),
+             release('build-' + sha(3), '2026-11-22T00:00:00Z')],
+            {'build-' + sha(1): sdk_manifest('1.0.3'), 'build-' + sha(2): sdk_manifest('1.0.3'),
+             'build-' + sha(3): sdk_manifest('1.0.4')})
+        self.assertEqual(self.run_resolve(fixture, before=sha(3))['revision'], sha(2))
+        with self.assertRaises(resolver.ResolveError):
+            self.run_resolve(fixture, before=sha(1))
+        with self.assertRaises(resolver.ResolveError):
+            self.run_resolve(fixture, before='f' * 40)
+
     def test_floor_takes_the_floor_version(self) -> None:
         fixture: Fixture = Fixture(
             [release('build-' + sha(1), '2026-11-20T00:00:00Z'), release('build-' + sha(2), '2026-11-22T00:00:00Z')],

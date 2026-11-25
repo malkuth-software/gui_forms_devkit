@@ -5,7 +5,7 @@ devkit.toml pins GUI.Forms by major with a floor ([gui_forms] major,
 minimum, channel, platforms). This turns that into one revision:
 
     python3 -B harness/harness/resolve_gui_forms.py resolve [--devkit FILE] [--workspace DIR]
-            [--channel main|stable] [--revision SHA | --floor] [--dry-run]
+            [--channel main|stable] [--revision SHA | --before SHA | --floor] [--dry-run]
     python3 -B harness/harness/resolve_gui_forms.py fetch --platform P [--workspace DIR] [--dry-run]
 
 resolve
@@ -25,7 +25,9 @@ resolve
 
     --revision SHA takes that commit's build exactly (the lockstep and the
     cache proof); --floor takes the newest build whose version is exactly
-    `minimum` (the pull-request floor row). The result is written to
+    `minimum` (the pull-request floor row); --before SHA takes the newest
+    candidate older than that commit's build (the cache proof's previous
+    row, R-1). The result is written to
     <workspace>/.ci/gui_forms-resolved.json: the repository, tag, commit,
     version, the SDK manifest, and each platform's asset names and SHA-256.
     Every devkit artifact copies it into its own manifest, so a devkit build
@@ -322,7 +324,7 @@ def resolved_record(pin: Pin, channel: str, candidate: Candidate, manifest: dict
     return record
 
 
-def resolve(pin: Pin, workspace: Path, channel: str, revision: str = '', floor: bool = False,
+def resolve(pin: Pin, workspace: Path, channel: str, revision: str = '', floor: bool = False, before: str = '',
             releases: Callable[[str], list[dict[str, Any]]] = list_releases,
             manifest_reader: Callable[[str, str, str, Path], dict[str, Any]] = read_json_asset) -> dict[str, Any]:
     """The record of the first candidate satisfying the pin; raises ResolveError naming why each was refused."""
@@ -331,6 +333,13 @@ def resolve(pin: Pin, workspace: Path, channel: str, revision: str = '', floor: 
     listed: list[Candidate] = candidates(releases(pin.repository), pin, channel)
     if revision:
         listed = [candidate for candidate in listed if candidate.revision.startswith(revision.lower())]
+    if before:
+        later: list[int] = [index for index, candidate in enumerate(listed)
+                            if candidate.revision.startswith(before.lower())]
+        if not later:
+            raise ResolveError('No ' + channel + ' build of ' + before + ' in ' + pin.repository
+                               + ' to take the one before')
+        listed = listed[later[0] + 1:]
     refusals: list[str] = []
     candidate: Candidate
     for candidate in listed:
@@ -340,7 +349,7 @@ def resolve(pin: Pin, workspace: Path, channel: str, revision: str = '', floor: 
         if not why:
             return resolved_record(pin, channel, candidate, manifest)
         refusals.append(candidate.tag + ': ' + why)
-    wanted: str = ('revision ' + revision if revision else 'the floor ' + version_text(pin.minimum) if floor
+    wanted: str = ('revision ' + revision if revision else 'a build before ' + before if before else 'the floor ' + version_text(pin.minimum) if floor
                    else 'major ' + str(pin.major) + ' at least ' + version_text(pin.minimum))
     detail: str = ('; '.join(refusals[:5]) if refusals else 'no ' + channel + ' release carries every platform\'s '
                    'SDK and cache (' + ', '.join(pin.platforms) + ') and ' + MANIFEST_ASSET)
@@ -497,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:
     exact: argparse._MutuallyExclusiveGroup = resolving.add_mutually_exclusive_group()
     exact.add_argument('--revision', default='')
     exact.add_argument('--floor', action='store_true')
+    exact.add_argument('--before', default='')
     resolving.add_argument('--dry-run', action='store_true')
     fetching: argparse.ArgumentParser = commands.add_parser('fetch')
     fetching.add_argument('--workspace', type=Path, default=DEVKIT_ROOT)
@@ -508,7 +518,7 @@ def main(argv: list[str] | None = None) -> int:
             pin: Pin = load_pin(arguments.devkit)
             channel: str = arguments.channel or pin.channel
             record: dict[str, Any] = resolve(pin, arguments.workspace.resolve(), channel, arguments.revision,
-                                             arguments.floor)
+                                             arguments.floor, arguments.before)
             print('GUI.Forms ' + record['version'] + ' at ' + record['revision'][:12] + ' (' + record['tag'] + ')',
                   flush=True)
             if not arguments.dry_run:

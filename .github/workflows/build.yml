@@ -1,0 +1,135 @@
+# One devkit build per platform against one GUI.Forms build: the views, the
+# programs and Pocket Reference over the prebuilt SDK, with the devkit's
+# own compiler cache restored and the build guard on. Called by lockstep.yml,
+# pull-request.yml and release.yml.
+#
+# GUI.Forms: `revision` takes that commit's green build exactly (the
+# lockstep), `floor` the newest build of devkit.toml's minimum (a pull
+# request's second row), neither the newest green build in the major.
+#
+# Each platform uploads the artifact devkit-<platform>[-floor]: the packages
+# and their receipts (with `package`), the devkit cache archive
+# (devkit_cache.py pack) and .ci/inputs.json, which publish_cache.py checks.
+name: devkit build
+on:
+  workflow_call:
+    inputs:
+      revision:
+        description: the GUI.Forms commit whose green build to take (empty with floor or for the newest)
+        type: string
+        default: ''
+      floor:
+        description: take the newest build of the floor version
+        type: boolean
+        default: false
+      package:
+        description: package and smoke-launch the programs and Pocket Reference
+        type: boolean
+        default: false
+      version:
+        description: the version the packages carry
+        type: string
+        default: '0.0.0'
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: macos-15, platform: macos-arm64, shell: bash}
+          - {runner: windows-2022, platform: windows-x64, shell: 'msys2 {0}'}
+          - {runner: ubuntu-24.04, platform: linux-x64, shell: bash}
+          - {runner: ubuntu-24.04-arm, platform: linux-arm64, shell: bash}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_DIR: .build/devkit
+      CC: clang
+      CXX: clang++
+      OBJCXX: clang++
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/devkit-setup
+        id: setup
+        with:
+          platform: ${{ matrix.platform }}
+          save-packages: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+      - name: Resolve GUI.Forms
+        run: |
+          if [ -n "${{ inputs.revision }}" ]; then
+            python -B harness/harness/resolve_gui_forms.py resolve --revision "${{ inputs.revision }}"
+          elif [ "${{ inputs.floor }}" = "true" ]; then
+            python -B harness/harness/resolve_gui_forms.py resolve --floor
+          else
+            python -B harness/harness/resolve_gui_forms.py resolve
+          fi
+      # The SDK at the fixed .sdk/gui-forms-sdk, and the build's runtime asset
+      # when it has one; then the runtime is verified, and built only when
+      # none verifies (Windows links its runtime statically from the toolchain).
+      - name: Fetch the SDK and the runtime
+        run: python -B harness/harness/resolve_gui_forms.py fetch --platform ${{ matrix.platform }}
+      - name: Verify the runtime, or build it
+        if: runner.os != 'Windows'
+        run: python -B harness/harness/restore_local.py runtime --platform ${{ matrix.platform }}
+      - name: Restore the devkit's newest cache
+        run: python -B harness/harness/devkit_cache.py restore --workspace . --platform ${{ matrix.platform }}
+      # The build guard runs at the end of the configure and before the first
+      # compile (harness/harness/cmake/DevkitBuildGuard.cmake): a build that
+      # would rebuild GUI.Forms or miss the cache stops here, saying why.
+      - name: Configure
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=harness/harness/cmake/llvm22.cmake
+      - name: Build
+        run: |
+          ccache --zero-stats
+          cmake --build "$BUILD_DIR" --parallel 4
+          mkdir -p .ci
+          ccache --print-stats > .ci/ccache-stats.txt
+          ccache --show-stats
+      - name: Check the views and programs (strict profile)
+        if: matrix.platform == 'linux-x64'
+        run: python -B harness/harness/run_checks.py --profile strict views programs
+      - name: Package the programs and Pocket Reference
+        if: inputs.package
+        run: |
+          runtime="${GUI_FORMS_DEVKIT_LLVM_RUNTIME:-}"
+          platform_runtime=""
+          if [ "$RUNNER_OS" = "macOS" ]; then platform_runtime="--runtime $runtime"; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then platform_runtime="--runtime-dir $(dirname "$(command -v clang++)")"; fi
+          python -B programs/tools/package_programs.py --platform ${{ matrix.platform }} --build-dir "$BUILD_DIR" \
+            --version "${{ inputs.version }}" --out dist --sdk .sdk/gui-forms-sdk $platform_runtime
+          python -B pocket_reference/tools/package.py --build "$BUILD_DIR/pocket_reference" \
+            --toolkit .sdk/gui-forms-sdk ${runtime:+--runtime "$runtime"} --version "${{ inputs.version }}" \
+            --output dist
+      - name: Smoke-launch the packages
+        if: inputs.package
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a python -B programs/tools/smoke_package.py --platform ${{ matrix.platform }} --dist dist
+          else
+            python -B programs/tools/smoke_package.py --platform ${{ matrix.platform }} --dist dist
+          fi
+      # The cache keeps what this build used (ci_cache.py evict), with each
+      # object's inputs, for the next run and the cache proof's expectation.
+      - name: Pack the devkit cache
+        run: |
+          python -B harness/harness/ci_cache.py evict --since "$DEVKIT_JOB_START"
+          python -B harness/harness/devkit_cache.py pack --workspace . --platform ${{ matrix.platform }} \
+            --build-dir "$BUILD_DIR" --revision "$GITHUB_SHA" --compiler "$(command -v clang++)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devkit-${{ matrix.platform }}${{ inputs.floor && '-floor' || '' }}
+          if-no-files-found: error
+          path: |
+            gui-forms-devkit-cache-${{ matrix.platform }}.tar.gz
+            .ci/inputs.json
+            .ci/gui_forms-resolved.json
+            .ci/ccache-stats.txt
+            dist/

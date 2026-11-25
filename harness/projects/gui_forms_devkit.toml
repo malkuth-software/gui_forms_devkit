@@ -1,0 +1,53 @@
+# The devkit's own project file (harness/project.py reads it): the names
+# its lockstep CI publishes under. publish_cache.py --tag gf-<GUI.Forms sha>
+# puts gui-forms-devkit-cache-<platform>.tar.gz (devkit_cache.py pack) and
+# the program packages into the lockstep run's pre-release;
+# prune_cache_releases.py --tag-prefix gf- keeps the five newest plus the
+# pinned. Changing a value starts a new history of caches.
+
+schema = 1
+
+[project]
+name = "gui_forms_devkit"
+repository = "malkuth-software/gui_forms_devkit"
+# The devkit checkout is the workspace root (CI's checkout), so the CI state
+# (.ci/, .ccache/, .sdk/, .build/) sits inside it, ignored by .gitignore.
+source_dir = "."
+build_name = "gui-forms-devkit"
+env_prefix = "GUI_FORMS_DEVKIT"
+
+[ci]
+artifact_prefix = "gui-forms-devkit-"
+cache_asset_prefix = "gui-forms-devkit-cache-"
+native_workflow = ".github/workflows/lockstep.yml"
+native_job = "lockstep"
+pinned_cache_revisions = "harness/projects/gui_forms_devkit_pinned.json"
+
+[toolchain]
+# The Windows CLANG64 toolchain GUI.Forms publishes and built the SDK with.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+name_prefixes = []
+
+# devkit: what building the views, programs and Pocket Reference against the
+# SDK, packaging them and starting them under a virtual display need on
+# Ubuntu 24.04.
+[linux_packages.devkit]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth", "xdotool", "patchelf", "dpkg-dev", "dbus", "at-spi2-core",
+]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "devkit views, programs and Pocket Reference against the prebuilt GUI.Forms SDK"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20

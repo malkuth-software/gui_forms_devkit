@@ -1,0 +1,91 @@
+# The devkit's own release, tools-free: Pocket Reference and the programs as
+# per-platform downloads for people who use them without the harness or a
+# template. A tag v<x.y.z> on main builds every platform against the newest
+# green GUI.Forms build in devkit.toml's major, packages and smoke-launches
+# the programs and Pocket Reference, and publishes them as the release
+# v<x.y.z> with SHA256SUMS.txt and the GUI.Forms build they were made on
+# (gui_forms-resolved.json). No harness, tools archive or cache is attached.
+#
+# Manually: Run workflow with the version; it publishes a draft.
+name: release
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: the version to release (x.y.z)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: devkit-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Name the version
+        id: version
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          version="${REQUESTED:-${GITHUB_REF_NAME#v}}"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::not a version: $version"; exit 1;;
+          esac
+          case "$version" in *[!0-9.]*) echo "::error::not a version: $version"; exit 1;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      package: true
+      version: ${{ needs.version.outputs.version }}
+
+  publish:
+    needs: [version, build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: devkit-*
+          path: artifacts
+      # Only the packages and their receipts: the caches stay in the lockstep
+      # pre-releases. Every platform must have resolved the same GUI.Forms build.
+      - name: Collect the downloads
+        run: |
+          mkdir -p release
+          for platform in macos-arm64 windows-x64 linux-x64 linux-arm64; do
+            directory="artifacts/devkit-$platform"
+            [ -d "$directory/dist" ] || { echo "::error::no packages for $platform"; exit 1; }
+            find "$directory/dist" -maxdepth 1 -type f ! -name SHA256SUMS.txt -exec cp {} release/ \;
+          done
+          revisions=$(for file in artifacts/devkit-*/.ci/gui_forms-resolved.json; do
+            python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["revision"])' "$file"; done | sort -u)
+          if [ "$(echo "$revisions" | wc -l)" -ne 1 ]; then
+            echo "::error::the platforms resolved different GUI.Forms builds: $revisions"; exit 1
+          fi
+          cp artifacts/devkit-linux-x64/.ci/gui_forms-resolved.json release/gui_forms-resolved.json
+          (cd release && sha256sum -- * > SHA256SUMS.txt)
+          echo "GUI_FORMS_REVISION=$revisions" >> "$GITHUB_ENV"
+      - name: Publish the release
+        run: |
+          notes="Pocket Reference and the GUI.Forms demonstration programs, built on GUI.Forms $GUI_FORMS_REVISION (gui_forms-resolved.json). Download the archive for your platform; check it against SHA256SUMS.txt."
+          draft=""
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then draft="--draft"; fi
+          gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "gui_forms_devkit $VERSION" --notes "$notes" $draft
