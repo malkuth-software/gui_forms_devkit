@@ -200,8 +200,39 @@ devkit.toml          the GUI.Forms pin: major 1, floor 1.0.5, channel main
 harness/             the devkit harness (see harness/README.md)
 pocket_reference/    Pocket Reference, with its history
 views/<id>/          demonstrator views, one static library each
+mockups/             mockups gui-forms-mockup lists: .form, .fixture, .theme.css
 programs/            host mains, labs, the File Manager demoboard, packaging
 ```
+
+## Mockups
+
+`gui-forms-mockup` (programs/host/<os>/mockup_main.*, views/mockup_factory)
+shows a form document, its fixture data and its theme sheet at once, with
+no build, and shows them again each time one is saved. A mockup is files:
+add `mockups/<name>.form` (and, if it wants them, `<name>.fixture` and
+`<name>.theme.css`) and it is listed. GUI.Forms' `docs/user/mockups.md`
+describes the fixture format and the library API (`FormMockup`).
+
+```text
+gui-forms-mockup                          the catalogue: every .form under mockups/
+gui-forms-mockup --interface=claim_form   opens one by name
+gui-forms-mockup path/to/my.form [--fixture f] [--sheet s.theme.css]
+gui-forms-mockup --screenshots out/       writes out/<name>.png for each, then exits
+```
+
+- A refused file is shown in the window with its file, line, column and
+  code; the last good mockup stays on screen.
+- The Theme menu switches the base (windows-professional by default,
+  gui-forms), the mockup's sheet on or off, or a familiar theme; the Scheme
+  menu the system's, light or dark colour scheme. `--base`, `--no-sheet`,
+  `--familiar-theme` and `--scheme` choose them at start.
+- Declared handlers (`on-click="save_claim"`) and bound commands record
+  each time they run: the status line, a JSON line on standard output, and
+  over MCP (`--mcp`) the tools `mockup.list`, `mockup.open`,
+  `mockup.reload`, `mockup.check` and `mockup.events`.
+- `--mockups <dir>` (or `$GUI_FORMS_MOCKUPS`, else `./mockups`) lists
+  another folder. `python3 -B programs/tools/check_mockups.py` checks the
+  checked-in mockups' XML, sources and stable IDs without a build.
 
 ## The pin
 

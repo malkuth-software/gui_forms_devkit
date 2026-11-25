@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The claim form's sample data (claim_form.form). -->
+<fixture xmlns="urn:gui-forms:fixture:1">
+  <value name="holder_name" value="Ada Marsh"/>
+  <value name="contact_by_phone" value="true"/>
+  <value name="incident_place" value="14 Quay Street, Harbourside"/>
+  <value name="incident_account" value="A pipe burst in the loft overnight and water came through the bedroom ceiling."/>
+  <value name="police_report" value="false"/>
+  <value name="status" value="Draft: not yet submitted"/>
+
+  <records name="regions" columns="region" shown-in="claim.holder.region">
+    <row values="North"/>
+    <row values="'North East'"/>
+    <row values="Midlands"/>
+    <row values="'South West'"/>
+    <row values="London"/>
+  </records>
+
+  <records name="claimed_items" columns="item category bought:integer paid:number receipt:boolean"
+      shown-in="claim.items.grid">
+    <row values="'Bedroom carpet' Furnishings 2019 640.00 true"/>
+    <row values="'Ceiling repair' Building 2026 1250.00 false"/>
+    <row values="Wardrobe Furniture 2021 410.50 true"/>
+    <row values="'Bedside lamp' Electrical 2023 39.99 false"/>
+  </records>
+</fixture>

@@ -24,6 +24,12 @@ gui_forms_devkit_view(process_control SOURCES process_control/process_control.cp
 # find panel, a column chooser, layouts, summaries and a CRM dashboard.
 gui_forms_devkit_view(data_workbench SOURCES data_workbench/data_workbench.cpp)
 
+# The mockup factory (gui-forms-mockup): a .form, its fixture and a theme
+# sheet shown at once and reloaded on save; the catalogue is ../mockups.
+gui_forms_devkit_view(mockup_factory SOURCES mockup_factory/mockup_catalogue.cpp mockup_factory/mockup_factory.cpp)
+target_compile_definitions(gui_forms_devkit_view_mockup_factory PUBLIC
+    "GUI_FORMS_DEVKIT_MOCKUPS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../mockups\"")
+
 # Touch Start: a panning surface of live tiles through the touch seams.
 gui_forms_devkit_view(touch_start SOURCES touch_start/touch_input.cpp touch_start/touch_start.cpp)
 

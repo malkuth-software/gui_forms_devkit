@@ -108,6 +108,7 @@ set(_devkit_programs
     "gallery|GUIForms::GalleryModel|GUI.Forms Gallery|gallery|gui-forms-gallery"
     "process_control|gui_forms_devkit_view_process_control|GUI.Forms Process Control|process-control|gui-forms-process-control"
     "data_workbench|gui_forms_devkit_view_data_workbench|GUI.Forms Data Workbench|data-workbench|gui-forms-data-workbench"
+    "mockup|gui_forms_devkit_view_mockup_factory|GUI.Forms Mockup|mockup|gui-forms-mockup"
     "touch_start|gui_forms_devkit_view_touch_start|GUI.Forms Touch Start|touch-start|gui-forms-touch-start"
     "code_zoom|gui_forms_devkit_view_code_zoom|GUI.Forms Code Zoom|code-zoom|gui-forms-code-zoom"
     "correspondence|gui_forms_devkit_view_correspondence|GUI.Forms Correspondence|correspondence|gui-forms-correspondence"
