@@ -4,7 +4,7 @@
      Its fixture is claim_form.fixture and its sheet claim_form.theme.css;
      open it from the catalogue by its name, claim_form. The handlers
      (on-...) record themselves: the status line, standard output and the
-     mockup.events tool show them. -->
+     mockup_events tool show them. -->
 <form xmlns="urn:gui-forms:form:1" id="claim.window"
     text="Insurance claim"
     client-size="640 520"

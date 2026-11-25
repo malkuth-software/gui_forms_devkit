@@ -86,7 +86,7 @@ constexpr FamiliarTheme listed_familiar_themes[] = {
     return value;
 }
 
-void reply_text(ModelToolReply& reply, const std::string& text) {
+void reply_text(automation::ModelToolReply& reply, const std::string& text) {
     static_cast<void>(reply.text(text.data(), text.size()));
 }
 
@@ -118,7 +118,7 @@ constexpr std::string_view open_prefix = "open.";
 }
 
 // The MCP tools' handlers: `context` is the factory.
-void list_tool(void* context, const ModelToolCall&, ModelToolReply& reply) {
+void list_tool(void* context, const automation::ModelToolCall&, automation::ModelToolReply& reply) {
     const MockupFactory& factory = *static_cast<const MockupFactory*>(context);
     std::string text = "{\"mockups\":[";
     const std::vector<MockupFiles>& catalogue = factory.catalogue();
@@ -130,13 +130,13 @@ void list_tool(void* context, const ModelToolCall&, ModelToolReply& reply) {
     reply_text(reply, text);
 }
 
-void open_tool(void* context, const ModelToolCall& call, ModelToolReply& reply) {
+void open_tool(void* context, const automation::ModelToolCall& call, automation::ModelToolReply& reply) {
     MockupFactory& factory = *static_cast<MockupFactory*>(context);
     const std::string_view arguments(call.arguments_json, call.arguments_bytes);
     const std::optional<std::string> name = json_string_member(arguments, "name");
     const std::optional<std::size_t> index = name ? find_mockup(factory.catalogue(), *name) : std::nullopt;
     if (!index) {
-        reply.fail(ModelToolError::not_found, "no mockup of that name", "mockup.list lists the names");
+        reply.fail(automation::ModelToolError::not_found, "no mockup of that name", "mockup_list lists the names");
         return;
     }
     static_cast<void>(factory.open(*index));
@@ -144,20 +144,20 @@ void open_tool(void* context, const ModelToolCall& call, ModelToolReply& reply) 
     reply_text(reply, text);
 }
 
-void reload_tool(void* context, const ModelToolCall&, ModelToolReply& reply) {
+void reload_tool(void* context, const automation::ModelToolCall&, automation::ModelToolReply& reply) {
     MockupFactory& factory = *static_cast<MockupFactory*>(context);
     factory.reload();
     const std::string text = factory.refusal().empty() ? std::string("reloaded") : factory.refusal();
     reply_text(reply, text);
 }
 
-void check_tool(void* context, const ModelToolCall&, ModelToolReply& reply) {
+void check_tool(void* context, const automation::ModelToolCall&, automation::ModelToolReply& reply) {
     MockupFactory& factory = *static_cast<MockupFactory*>(context);
     const std::string text = check_text(factory.mockup().check());
     reply_text(reply, text.empty() ? std::string("no diagnostics") : text);
 }
 
-void events_tool(void* context, const ModelToolCall&, ModelToolReply& reply) {
+void events_tool(void* context, const automation::ModelToolCall&, automation::ModelToolReply& reply) {
     MockupFactory& factory = *static_cast<MockupFactory*>(context);
     const FormMockup& mockup = factory.mockup();
     std::string text = "{\"handlers\":[";
@@ -185,24 +185,24 @@ struct ToolEntry final {
     const char* name;
     const char* description;
     const char* input_schema;
-    ModelToolAccess access;
+    automation::ModelToolAccess access;
     bool settles;
-    ModelToolHandler handler;
+    automation::ModelToolHandler handler;
 };
 
 constexpr ToolEntry factory_tools[] = {
-    {"mockup.list", "Lists the mockups of the catalogue by name.", nullptr, ModelToolAccess::read_only, false,
+    {"mockup_list", "Lists the mockups of the catalogue by name.", nullptr, automation::ModelToolAccess::read_only, false,
      &list_tool},
-    {"mockup.open", "Opens the mockup named `name` (as mockup.list gives it).",
+    {"mockup_open", "Opens the mockup named `name` (as mockup_list gives it).",
      "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}",
-     ModelToolAccess::acting, true, &open_tool},
-    {"mockup.reload", "Reads the shown mockup's files again and shows them, or says why they are refused.",
-     nullptr, ModelToolAccess::acting, true, &reload_tool},
-    {"mockup.check", "The last load's diagnostics: file, line, column, code and message.", nullptr,
-     ModelToolAccess::read_only, false, &check_tool},
-    {"mockup.events",
+     automation::ModelToolAccess::acting, true, &open_tool},
+    {"mockup_reload", "Reads the shown mockup's files again and shows them, or says why they are refused.",
+     nullptr, automation::ModelToolAccess::acting, true, &reload_tool},
+    {"mockup_check", "The last load's diagnostics: file, line, column, code and message.", nullptr,
+     automation::ModelToolAccess::read_only, false, &check_tool},
+    {"mockup_events",
      "The shown mockup's declared handlers and commands, and the events they recorded (oldest first).", nullptr,
-     ModelToolAccess::read_only, false, &events_tool},
+     automation::ModelToolAccess::read_only, false, &events_tool},
 };
 
 } // namespace
@@ -367,7 +367,7 @@ void MockupFactory::event_recorded(void* context, const FormMockupEvent& event) 
 
 void MockupFactory::on_dispose() noexcept {
     if (tools_registered_) {
-        for (const ToolEntry& tool : factory_tools) static_cast<void>(unregister_model_tool(tool.name));
+        for (const ToolEntry& tool : factory_tools) static_cast<void>(automation::unregister_model_tool(tool.name));
         tools_registered_ = false;
     }
     if (watch_) (*watch_).stop();
@@ -520,15 +520,15 @@ void MockupFactory::update_status() {
 void MockupFactory::register_tools() {
     if (tools_registered_) return;
     for (const ToolEntry& tool : factory_tools) {
-        ModelToolSpec spec{};
+        automation::ModelToolSpec spec{};
         spec.name = tool.name;
         spec.description = tool.description;
         spec.input_schema = tool.input_schema;
         spec.access = tool.access;
         spec.settles = tool.settles;
-        spec.thread = ModelToolThread::ui;
-        const ModelToolRegistration registered = register_model_tool(spec, tool.handler, this);
-        if (registered != ModelToolRegistration::added) {
+        spec.thread = automation::ModelToolThread::ui;
+        const automation::ModelToolRegistration registered = automation::register_model_tool(spec, tool.handler, this);
+        if (registered != automation::ModelToolRegistration::added) {
             std::fprintf(stderr, "gui-forms-mockup: tool %s not registered: %s\n", tool.name,
                          model_tool_registration_name(registered));
         }

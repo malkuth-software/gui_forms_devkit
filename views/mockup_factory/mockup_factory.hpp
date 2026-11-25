@@ -15,8 +15,8 @@
 // system's, light or dark) and Mockups (the catalogue, opened by name).
 //
 // MCP: every GUI.Forms program serves MCP under --mcp; the factory adds
-// mockup.list, mockup.open (by name), mockup.reload, mockup.check (the last
-// load's diagnostics) and mockup.events (the declared handlers and what
+// mockup_list, mockup_open (by name), mockup_reload, mockup_check (the last
+// load's diagnostics) and mockup_events (the declared handlers and what
 // they recorded). A command a mockup binds is a model tool too
 // (command.<name>), as every Command with an identity is.
 

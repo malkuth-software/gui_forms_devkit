@@ -139,7 +139,8 @@ inline void print_mockup_usage() {
         } else if (argument == "--base" && (value == "gui-forms" || value == "windows-professional")) {
             options.theme.base = value == "gui-forms" ? ThemeBase::gui_forms : ThemeBase::windows_professional;
         } else if (argument == "--familiar-theme" && familiar_theme_named(value).present()) {
-            options.theme.familiar = *familiar_theme_named(value).value();
+            const stxlib::Optional<FamiliarTheme> named = familiar_theme_named(value);
+            options.theme.familiar = *named.value();
         } else if (argument == "--scheme" && (value == "light" || value == "dark")) {
             options.scheme = value == "dark" ? MockupScheme::dark : MockupScheme::light;
             options.program.scheme = std::string(value);

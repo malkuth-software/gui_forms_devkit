@@ -228,8 +228,8 @@ gui-forms-mockup --screenshots out/       writes out/<name>.png for each, then e
   `--familiar-theme` and `--scheme` choose them at start.
 - Declared handlers (`on-click="save_claim"`) and bound commands record
   each time they run: the status line, a JSON line on standard output, and
-  over MCP (`--mcp`) the tools `mockup.list`, `mockup.open`,
-  `mockup.reload`, `mockup.check` and `mockup.events`.
+  over MCP (`--mcp`) the tools `mockup_list`, `mockup_open`,
+  `mockup_reload`, `mockup_check` and `mockup_events`.
 - `--mockups <dir>` (or `$GUI_FORMS_MOCKUPS`, else `./mockups`) lists
   another folder. `python3 -B programs/tools/check_mockups.py` checks the
   checked-in mockups' XML, sources and stable IDs without a build.
