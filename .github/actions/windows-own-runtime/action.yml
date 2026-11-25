@@ -1,0 +1,43 @@
+# The Windows own runtime a devkit build links (GUI.Forms ships Windows on
+# x86_64-pc-windows-msvc with STXlib's runtime; owner, 2026-11-24), at the
+# resolved GUI.Forms revision. resolve_gui_forms.py fetch has already
+# extracted the build's gui-forms-runtime-windows-x64 asset (.ci/own-runtime)
+# when it publishes one; GUI.Forms' own_runtime.py, from a sparse checkout at
+# the same revision, reuses it when its stamp matches and builds it otherwise
+# (the fallback), then sets the three variables its toolchain reads.
+#
+# Output `toolchain`: GUI.Forms' cmake/llvm22-windows-msvc.cmake at that
+# revision, the CMAKE_TOOLCHAIN_FILE a consumer builds with on Windows.
+name: windows own runtime
+description: Restore or build GUI.Forms' Windows own runtime and name its toolchain file
+inputs:
+  revision:
+    description: the resolved GUI.Forms commit (.ci/gui_forms-resolved.json)
+    required: true
+outputs:
+  toolchain:
+    description: the Windows toolchain file of that revision
+    value: ${{ steps.runtime.outputs.toolchain }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        repository: malkuth-software/gui_forms
+        ref: ${{ inputs.revision }}
+        path: .ci/gui_forms-tools
+        sparse-checkout: |
+          tools
+          cmake
+          stx.lock
+        sparse-checkout-cone-mode: false
+    - name: Restore or build the own runtime
+      id: runtime
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        python -B .ci/gui_forms-tools/tools/own_runtime.py build --out .ci/own-runtime --jobs 4 --github-env
+        toolchain="$GITHUB_WORKSPACE/.ci/gui_forms-tools/cmake/llvm22-windows-msvc.cmake"
+        if command -v cygpath >/dev/null; then toolchain="$(cygpath -m "$toolchain")"; fi
+        echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"

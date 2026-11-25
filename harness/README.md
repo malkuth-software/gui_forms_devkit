@@ -49,6 +49,7 @@ path-for-path copy.
 | `harness/build_macos_runtimes.py`, `build_linux_runtimes.py` | the fallback when no published runtime asset verifies: `restore_local.py runtime` builds one from source |
 | `harness/devkit_cache.py` | new: the devkit's own compiler cache (pack, restore from the newest `gf-` pre-release) and the cache proof's computed expectation and verdicts (`.github/workflows/cache-proof.yml`) |
 | `harness/publish_cache.py`, `prune_cache_releases.py`, `projects/gui_forms_devkit.toml` | the devkit publishes its own cache and packages per lockstep run (`--tag gf-<GUI.Forms sha>`, `--no-toolchain`, `--asset`) and keeps the five newest (`--tag-prefix gf-`); a consumer's CI can publish its cache the same way |
+| `harness/prepare_build.py` | new: runs a project's `[bootstrap.<platform>]` prepare commands in CI and puts their settings in the build environment, as `bootstrap.py` does on a machine (GUI.Forms on Windows: the own runtime, reused from the restored runtime asset or built) |
 | `harness/compiler_identity.py` | a consumer's own CI keys its caches on the compiler's identity, as ours does |
 | `harness/ci_cache.py` | a consumer's own CI saves and restores its ccache the same way |
 | `harness/install_linux_ci_packages.sh` | the Linux packages a consumer's CI runner needs to build against the SDK |

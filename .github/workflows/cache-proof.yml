@@ -133,6 +133,14 @@ jobs:
       - name: Verify the runtime, or build it
         if: runner.os != 'Windows'
         run: python -B harness/harness/restore_local.py runtime --platform ${{ matrix.target.platform }}
+      - name: Name the resolved revision
+        id: resolved
+        run: python -c 'import json; print("revision=" + json.load(open(".ci/gui_forms-resolved.json"))["revision"])' >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/windows-own-runtime
+        id: own-runtime
+        if: runner.os == 'Windows'
+        with:
+          revision: ${{ steps.resolved.outputs.revision }}
       - name: Restore the devkit cache of the previous lockstep run
         run: python -B harness/harness/devkit_cache.py restore --workspace . --platform ${{ matrix.target.platform }}
       - name: Compute the expected hits
@@ -140,7 +148,8 @@ jobs:
       - name: Build
         run: |
           cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=harness/harness/cmake/llvm22.cmake -DGUI_FORMS_DEVKIT_ALLOW_FULL_BUILD=ON
+            -DCMAKE_TOOLCHAIN_FILE="${{ steps.own-runtime.outputs.toolchain || 'harness/harness/cmake/llvm22.cmake' }}" \
+            -DGUI_FORMS_DEVKIT_ALLOW_FULL_BUILD=ON
           ccache --zero-stats
           cmake --build "$BUILD_DIR" --parallel 4
           mkdir -p .ci
@@ -161,21 +170,27 @@ jobs:
 
   # GUI.Forms at R from its own published cache (R's, then R-1's), through
   # the harness's restore_local.py and build environment as a developer's
-  # machine gets it. Windows is left out: its build first makes STXlib's own
-  # runtime ([bootstrap.windows-x64] prepare), which the harness's bootstrap
-  # runs and this job does not yet.
+  # machine gets it. On Windows the cache restore also brings the build's
+  # own runtime (gui-forms-runtime-windows-x64), and prepare_build.py runs
+  # the project's [bootstrap.windows-x64] prepare (own_runtime.py build:
+  # reused when its stamp matches, built otherwise) and puts its settings in
+  # the build environment, as the harness's bootstrap does on a machine.
   gui-forms:
     needs: rows
     strategy:
       fail-fast: false
       matrix:
         target:
-          - {runner: macos-15, platform: macos-arm64}
-          - {runner: ubuntu-24.04, platform: linux-x64}
-          - {runner: ubuntu-24.04-arm, platform: linux-arm64}
+          - {runner: macos-15, platform: macos-arm64, shell: bash}
+          - {runner: windows-2022, platform: windows-x64, shell: 'msys2 {0}'}
+          - {runner: ubuntu-24.04, platform: linux-x64, shell: bash}
+          - {runner: ubuntu-24.04-arm, platform: linux-arm64, shell: bash}
         cache: [current, previous]
     runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 120
+    defaults:
+      run:
+        shell: ${{ matrix.target.shell }}
     env:
       GH_TOKEN: ${{ github.token }}
       CACHE_REVISION: ${{ matrix.cache == 'current' && needs.rows.outputs.revision || needs.rows.outputs.previous }}
@@ -183,6 +198,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Skip without a previous build
         id: skip
+        shell: bash
         run: |
           if [ -z "$CACHE_REVISION" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "::notice::no previous build"; fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -206,9 +222,12 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then
             sh harness/harness/install_linux_ci_packages.sh toolkit "$RUNNER_TEMP/apt-archives"
           fi
+          python -B harness/harness/restore_local.py toolchain --platform ${{ matrix.target.platform }}
           python -B harness/harness/restore_local.py cache --platform ${{ matrix.target.platform }} --revision "$CACHE_REVISION"
           python -B harness/harness/restore_local.py runtime --platform ${{ matrix.target.platform }}
           python -B harness/harness/restore_local.py env --platform ${{ matrix.target.platform }}
+          . .ci/local-build-env.sh
+          python -B harness/harness/prepare_build.py --platform ${{ matrix.target.platform }}
       - name: Build GUI.Forms at R
         if: steps.skip.outputs.skip != 'true'
         run: |
