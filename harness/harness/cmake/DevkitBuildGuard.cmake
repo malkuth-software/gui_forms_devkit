@@ -123,10 +123,14 @@ function(_gui_forms_devkit_guard_arguments out)
             set(imported "no")
         endif()
     endif()
+    # The launcher (empty without ccache) and imported (empty when the SDK
+    # was not looked up) are joined to their options: an empty list element
+    # vanishes when the list is expanded, and argparse would take the next
+    # option as the value.
     set(arguments --workspace "${GUI_FORMS_DEVKIT_WORKSPACE}" --platform "${platform}"
                   --build-dir "${CMAKE_BINARY_DIR}" --cxx-compiler "${CMAKE_CXX_COMPILER}"
-                  --launcher "${GUI_FORMS_DEVKIT_LAUNCHER}" --gui-forms-dir "${GUIForms_DIR}"
-                  --imported "${imported}" --threshold "${GUI_FORMS_DEVKIT_HIT_THRESHOLD}"
+                  "--launcher=${GUI_FORMS_DEVKIT_LAUNCHER}" --gui-forms-dir "${GUIForms_DIR}"
+                  "--imported=${imported}" --threshold "${GUI_FORMS_DEVKIT_HIT_THRESHOLD}"
                   --sources-file "${CMAKE_BINARY_DIR}/gui_forms_devkit_guard/sources.txt")
     foreach(assignment IN LISTS GUI_FORMS_DEVKIT_COMPILE_ENVIRONMENT)
         list(APPEND arguments --compile-env "${assignment}")
