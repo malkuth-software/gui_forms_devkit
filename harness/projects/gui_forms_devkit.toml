@@ -42,6 +42,17 @@ packages = [
     "xvfb", "xauth", "xdotool", "patchelf", "dpkg-dev", "dbus", "at-spi2-core",
 ]
 
+# harness/bootstrap.py, for anyone: no notes (the devkit declares none; with
+# --in-house only the projects repository is added), the Windows toolchain,
+# then the smoke build, which resolves and fetches the SDK, restores the
+# runtime asset (the own runtime on Windows) and the devkit's newest cache,
+# and configures and builds against the prebuilt SDK (devkit_build.py).
+# {python} is the interpreter running the bootstrap.
+[bootstrap]
+restore = ["toolchain"]
+smoke = ["{python}", "harness/harness/devkit_build.py", "--app", ".", "--project",
+         "harness/projects/gui_forms_devkit.toml", "--restore-devkit-cache", "--no-tests"]
+
 [build]
 configure_variables = []
 
