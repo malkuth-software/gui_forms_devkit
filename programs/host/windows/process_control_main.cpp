@@ -1,7 +1,7 @@
 // The process-control demonstrator on this host (owner, 2026-11-22;
 // demo/process_control/process_control.hpp): the dialog drawn from the
 // library's light maps and finishes, with --headless --capture and --check.
-#include "windows_host.hpp"
+#include "gui_forms/platform/windows_host.hpp"
 #include "process_control.hpp"
 #include "process_control_program.hpp"
 #include "program_options.hpp"

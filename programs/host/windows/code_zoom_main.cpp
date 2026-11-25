@@ -6,7 +6,7 @@
 #include "code_zoom.hpp"
 #include "code_zoom_program.hpp"
 #include "program_options.hpp"
-#include "windows_host.hpp"
+#include "gui_forms/platform/windows_host.hpp"
 
 #include <memory>
 #include <optional>

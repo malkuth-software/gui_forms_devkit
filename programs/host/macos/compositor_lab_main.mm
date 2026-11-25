@@ -1,7 +1,7 @@
 // The compositor lab on this host (stage T5, phase C8; demo/compositor_lab.hpp).
 // --backdrop names the request; each grant is printed as a JSON line.
 #include "compositor_lab.hpp"
-#include "macos_host.hpp"
+#include "gui_forms/platform/macos_host.hpp"
 #include "program_options.hpp"
 
 #include <cstdio>

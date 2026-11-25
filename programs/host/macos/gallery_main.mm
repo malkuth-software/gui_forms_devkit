@@ -1,4 +1,4 @@
-#include "macos_host.hpp"
+#include "gui_forms/platform/macos_host.hpp"
 #include "gallery.hpp"
 #include "gallery_headless_capture.hpp"
 #include "gallery_staging.hpp"

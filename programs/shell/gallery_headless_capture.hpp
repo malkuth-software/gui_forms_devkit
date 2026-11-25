@@ -29,7 +29,7 @@
 #include "gui_forms/capture/offscreen_raster/offscreen_raster.hpp"
 #include "gui_forms/paint_framebuffer.hpp"
 #include "gui_forms/window.hpp"
-#include "../src/platform/library_files.hpp"
+#include "program_support.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -37,9 +37,9 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
-#include <stxlib/files.hpp>
 #include <stxlib/result.hpp>
 #include <vector>
 
@@ -99,13 +99,7 @@ inline bool engine_work_waiting(const Window& window) {
 // Writes `bytes` to `path`, replacing the file. False when it cannot be
 // opened or written whole.
 inline bool write_file(const std::string& path, const std::vector<std::byte>& bytes) {
-    stxlib::OperationResult<stxlib::File> opened =
-        platform::open_file(std::filesystem::path(path), stxlib::FileMode::replace);
-    if (opened.failed()) return false;
-    stxlib::File& file = *opened.value();
-    const stxlib::OperationStatus wrote = file.write_all(platform::stxlib_bytes(bytes));
-    const stxlib::OperationStatus closed = file.close();
-    const bool written = wrote.succeeded() && closed.succeeded();
+    const bool written = demo::write_program_file(std::filesystem::path(path), std::span<const std::byte>(bytes));
     return written;
 }
 

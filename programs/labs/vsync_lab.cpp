@@ -4,8 +4,7 @@
 #include "gui_forms/live_surface.hpp"
 #include "gui_forms/range_controls.hpp"
 #include "gui_forms/timer.hpp"
-#include "../src/core/threading/start_thread.hpp"
-#include "../src/platform/library_files.hpp"
+#include "program_support.hpp"
 
 #include <algorithm>
 #include <array>
@@ -21,13 +20,10 @@
 #include <new>
 #include <span>
 #include <string>
-#include <stxlib/files.hpp>
 #include <stxlib/optional.hpp>
 #include <stxlib/result.hpp>
 #include <stxlib/stop_token.hpp>
 #include <stxlib/threads.hpp>
-#include <stxlib/types.hpp>
-#include <stxlib/view.hpp>
 #include <utility>
 #include <vector>
 
@@ -138,7 +134,7 @@ public:
             stxlib::OperationResult<stxlib::StopSource> stop = stxlib::StopSource::create();
             if (stop.failed()) throw std::bad_alloc();
             stop_ = static_cast<stxlib::OperationResult<stxlib::StopSource>&&>(stop).take_value();
-            worker_ = detail::start_library_thread(&WaterfallSurface::producer_main, this, "vsync lab producer");
+            worker_ = demo::start_program_thread(&WaterfallSurface::producer_main, this, "vsync lab producer");
         }
     }
 
@@ -697,13 +693,8 @@ private:
                        ',' + std::to_string(entry.read_acquires) + ',' + std::to_string(entry.width) + ',' +
                        std::to_string(entry.height) + ',' + (entry.published ? '1' : '0') + '\n';
             }
-            stxlib::OperationResult<stxlib::File> opened =
-                platform::open_file(std::filesystem::path(trace_path_), stxlib::FileMode::replace);
-            if (opened.succeeded()) {
-                const stxlib::View<stxlib::Byte> bytes(reinterpret_cast<const stxlib::Byte*>(out.data()),
-                                                       static_cast<stxlib::usize>(out.size()));
-                static_cast<void>((*opened.value()).write_all(bytes));
-            }
+            static_cast<void>(demo::write_program_file(std::filesystem::path(trace_path_),
+                                                       std::as_bytes(std::span<const char>(out))));
         } catch (...) {
         }
         trace_path_.clear();

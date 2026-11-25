@@ -49,6 +49,7 @@ arrives as a rebase onto `pocket_reference/`.
 | `packaging/{programs.json,deb_control.in,linux_desktop.in,windows_installer.nsi.in}` | `programs/packaging/` (moved) |
 | `packaging/licenses.json`, `packaging/licenses/` | `programs/packaging/` (copied: the SDK and the STXlib package read them too) |
 | `tools/{package_programs,smoke_package,test_package_programs}.py` | `programs/tools/` |
+| `tools/{publication_version,check_mcp_launch}.py` | `programs/tools/` (copied: the package and smoke tools import them) |
 
 Kept in gui_forms, against the first cut of the design, because the
 installed `GalleryModel` component or its `Lab` and `DemoControls`
@@ -59,9 +60,38 @@ dependencies build them (CMakeLists.txt, `gui_forms_gallery_model`):
 `demo/lab_controls/` and `lab/`. `windows/menu_probe_main.cpp` stays too: it
 is gui_forms_tests' menu probe, not a program.
 
+## Building the programs
+
+```sh
+python3 -B harness/harness/resolve_gui_forms.py resolve
+python3 -B harness/harness/resolve_gui_forms.py fetch --platform macos-arm64
+cmake -S . -B build -G Ninja && cmake --build build
+python3 -B programs/tools/package_programs.py --platform macos-arm64 --build-dir build --version 1.0.0 --out dist
+```
+
+`fetch` restores the build's C++ runtime (`gui-forms-runtime-<platform>`)
+when it publishes one, and unpacks its SDK at `.sdk/gui-forms-sdk`.
+`programs/CMakeLists.txt` builds each program under its GUI.Forms target and
+output name (`gui_forms_gallery`, `gui_forms_gallery_windows`,
+`gui_forms_gallery_linux`, ...), so `programs/packaging/programs.json` and the
+package and smoke tools are unchanged. Every program links
+`GUIForms::Application` and its model: the Gallery `GUIForms::GalleryModel`,
+a demonstrator its view (`views/`), a lab `programs/labs/<lab>.cpp`, Explore
+the demoboard's model over `GUIForms::Lab`. The faces' notices come from the
+SDK's `share/GUIForms/fonts`, as does the packager's (`--sdk`, default
+`.sdk/gui-forms-sdk`).
+
+The programs used two private GUI.Forms headers (a thread starter and a file
+writer); `programs/shell/program_support.hpp` rebuilds them on STXlib and the
+standard library, so nothing here includes a `src/` header. The Code Zoom
+view shows one of this repository's files
+(`GUI_FORMS_DEVKIT_CODE_ZOOM_SOURCE`, default `views/code_zoom/code_sheet.cpp`)
+where GUI.Forms showed one of its own.
+
 ## Checks
 
 ```sh
 python3 -B -m unittest discover -s harness/harness -p "test_*.py"
+python3 -B -m unittest discover -s programs/tools -p "test_*.py"
 python3 -B harness/harness/run_checks.py --profile strict views programs
 ```

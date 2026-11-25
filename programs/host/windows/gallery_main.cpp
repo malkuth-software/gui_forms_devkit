@@ -1,7 +1,7 @@
 #include "gallery.hpp"
 #include "gallery_headless_capture.hpp"
 #include "gallery_staging.hpp"
-#include "windows_host.hpp"
+#include "gui_forms/platform/windows_host.hpp"
 #include "program_options.hpp"
 
 #include <cstdio>

@@ -44,9 +44,12 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(explore.platforms["macos-arm64"].bundle, "File Manager Demoboard.app")
         self.assertEqual(explore.display_name, "GUI.Forms Explore (preview)")
 
-    def test_font_notices_match_the_asset_directory(self) -> None:
+    def test_font_notices_match_the_sdk_font_directory(self) -> None:
         manifest = pp.load_manifest()
-        source = pp.ROOT / manifest.fonts["source"][0]
+        source = pp.sdk_source(manifest.fonts["source"][0], pp.DEFAULT_SDK)
+        self.assertEqual(source, pp.DEFAULT_SDK / pp.SDK_FONTS_PATH)
+        if not source.is_dir():
+            self.skipTest("no SDK unpacked at " + str(pp.DEFAULT_SDK))
         for name in manifest.fonts["notices"] + manifest.fallback_font_names():
             self.assertTrue((source / name).is_file(), name)
         # Every licence the build's programs carry (GUI_FORMS_PROGRAM_FONT_NOTICES).
@@ -74,8 +77,13 @@ class ManifestTests(unittest.TestCase):
             (fonts / "NotoEmoji-Regular.ttf").write_bytes(b"face")
             (fonts / "Carlito-Regular.ttf").write_bytes(b"face")
             (fonts / "OFL-Noto.txt").write_text("licence", encoding="utf-8")
+            sdk = root / "sdk"
+            sdk_fonts = sdk / pp.SDK_FONTS_PATH
+            sdk_fonts.mkdir(parents=True)
+            for name in manifest.fonts["notices"] + manifest.fallback_font_names():
+                (sdk_fonts / name).write_text("licence", encoding="utf-8")
             packager = pp.Packager(manifest, "windows-x64", root, "0.1.7", root, "abc", False, None, None, True,
-                                   log=lambda *_: None)
+                                   log=lambda *_: None, sdk=sdk)
             packager.copy_fonts(fonts, without)
             names = {path.name for path in fonts.iterdir()}
             self.assertEqual(names, set(manifest.font_notices(without)))
@@ -105,6 +113,44 @@ class ManifestTests(unittest.TestCase):
             # Any other $PREFIX source comes from a toolchain prefix given at packaging time.
             elif not notice.get("optional") and not source.startswith("$"):
                 self.assertTrue((pp.ROOT / source).is_file(), source)
+
+    def test_notices_come_from_the_sdk_or_this_tree(self) -> None:
+        data = json.loads(pp.LICENSES_PATH.read_text(encoding="utf-8"))
+        for notice in data["notices"]:
+            source: str = notice["source"]
+            # No GUI.Forms or stx checkout is read in the devkit.
+            self.assertFalse(source.startswith(pp.STX_PREFIX + "/") or source.startswith(pp.STXLIB_PREFIX + "/"),
+                             source)
+            if not source.startswith("$"):
+                self.assertTrue((pp.ROOT / source).is_file(), source)
+        sources = [notice["source"] for notice in data["notices"]]
+        self.assertIn("$GUI_FORMS_SDK/THIRD_PARTY_NOTICES.md", sources)
+        self.assertIn("$GUI_FORMS_SDK/LICENSE", sources)
+
+    def test_sdk_sources_resolve_under_the_sdk(self) -> None:
+        sdk = Path("/sdk")
+        self.assertEqual(pp.sdk_source("$GUI_FORMS_SDK/LICENSE", sdk), sdk / "share/licenses/GUIForms/LICENSE")
+        self.assertEqual(pp.sdk_source("$GUI_FORMS_FONTS", sdk), sdk / "share/GUIForms/fonts")
+        self.assertIsNone(pp.sdk_source("packaging/licenses/llvm/libcxx-LICENSE.TXT", sdk))
+        self.assertIsNone(pp.sdk_source("$GUI_FORMS_SDKX/LICENSE", sdk))
+
+    def test_a_package_takes_its_notices_from_the_sdk(self) -> None:
+        manifest = pp.load_manifest()
+        data = json.loads(pp.LICENSES_PATH.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            sdk = root / "sdk"
+            for notice in data["notices"]:
+                origin = pp.sdk_source(notice["source"], sdk)
+                if origin is not None:
+                    origin.parent.mkdir(parents=True, exist_ok=True)
+                    origin.write_text(notice["source"], encoding="utf-8")
+            packager = pp.Packager(manifest, "linux-x64", root, "0.1.7", root, "abc", False, None, None, True,
+                                   log=lambda *_: None, sdk=sdk)
+            licenses = root / "licenses"
+            packager.copy_notices(licenses)
+            self.assertEqual((licenses / "GUIForms.txt").read_text(encoding="utf-8"), "$GUI_FORMS_SDK/LICENSE")
+            self.assertTrue((licenses / "LLVM" / "libunwind-LICENSE.TXT").is_file())
 
     def test_stx_notices_resolve_from_the_build_checkout(self) -> None:
         # The variable would name a checkout ahead of the build's; this test reads the build's.
@@ -330,8 +376,11 @@ class NoticeCheckTests(unittest.TestCase):
             licenses = self.make_package(root)
             pp.check_package_notices(root, "windows-x64", licenses, ["OFL-Example.txt"])
 
-    def test_the_checked_in_notices_name_every_component(self) -> None:
-        text = (pp.ROOT / pp.NOTICES_NAME).read_text(encoding="utf-8")
+    def test_the_sdk_notices_name_every_component(self) -> None:
+        notices = pp.DEFAULT_SDK / pp.SDK_NOTICES_PATH / pp.NOTICES_NAME
+        if not notices.is_file():
+            self.skipTest("no SDK unpacked at " + str(pp.DEFAULT_SDK))
+        text = notices.read_text(encoding="utf-8")
         self.assertIsNone(pp.GPL_TITLE.search(text))
         data = json.loads(pp.LICENSES_PATH.read_text(encoding="utf-8"))
         for notice in data["notices"]:
