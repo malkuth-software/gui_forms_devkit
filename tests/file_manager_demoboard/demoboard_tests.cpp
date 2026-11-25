@@ -412,7 +412,8 @@ int main() {
     require(search_results && search_surface && folder_surface &&
                 (*search_surface).visible.read() && !(*folder_surface).visible.read() &&
                 (*search_results).items().size() == 7U &&
-                (*search_results).children().empty() &&
+                // Its one retained child is the vertical scroll bar.
+                (*search_results).children().size() == 1U &&
                 (*search_results).compact_height.read() == 45.0 &&
                 (*search_results).expanded_height.read() == 126.0 &&
                 (*search_results).selected_id.read() ==
