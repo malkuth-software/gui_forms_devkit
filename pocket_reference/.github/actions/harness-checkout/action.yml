@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 name: Check out the pinned template_harness
 description: >-
   Reads harness.lock and checks that template_harness commit out, detached, at

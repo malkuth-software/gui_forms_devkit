@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 """Fetches GUI.Forms at the commit third_party/gui-forms.lock.json pins."""
 import argparse
 import json

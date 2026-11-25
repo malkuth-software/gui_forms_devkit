@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 #pragma once
 // ReferencePage: one reference page, read only, on paper. It lays out the
 // blocks of a Page (reference_document.hpp): headings with rules, wrapped

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 # Pocket Reference: GUI.Forms' API reference as a program. Its pages are
 # generated from a GUI.Forms checkout's docs (POCKET_REFERENCE_DOCS), each
 # control page's figure is that control's stock specimen rendered through

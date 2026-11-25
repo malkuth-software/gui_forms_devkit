@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 #pragma once
 // Pocket Reference's pages: the book of pages a pack holds, and one page
 // parsed into blocks and runs for ReferencePage to lay out. The markup is

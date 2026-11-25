@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 // pocket-reference-figures: renders the figure of every control page.
 // Usage: pocket-reference-figures <reference.txt> <figures directory>
 //

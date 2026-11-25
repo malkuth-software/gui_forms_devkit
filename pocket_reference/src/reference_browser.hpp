@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 #pragma once
 // ReferenceBrowser: Pocket Reference's behaviour over the forms. The window
 // (forms/reference_window.form) holds the menus, the navigation bar, the

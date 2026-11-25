@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 // pocket-reference-pack: codes the reference text and its figures into the
 // pack the viewer reads.
 // Usage: pocket-reference-pack <reference.txt> <figures.txt> <reference.pack>

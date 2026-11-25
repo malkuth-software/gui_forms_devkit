@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 #include "reference_browser.hpp"
 
 #include "reference_icons.hpp"

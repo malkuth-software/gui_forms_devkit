@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 # Builds Pocket Reference on Windows, macOS and Linux against the pinned
 # GUI.Forms source (third_party/gui-forms.lock.json), with its pack: the
 # page text from GUI.Forms' docs and the figures rendered from its stock

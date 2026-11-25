@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 # A tag v<major>.<minor>.<patch> builds and packages Pocket Reference on each
 # host (build.yml) and attaches the downloads to the tag's GitHub release:
 # a macOS zip, a Windows zip and Linux archives.

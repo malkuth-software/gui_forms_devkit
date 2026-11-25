@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 """Writes Pocket Reference's page text from GUI.Forms' generated reference.
 
 Reads a GUI.Forms checkout: manifests/controls.json (the control registry),

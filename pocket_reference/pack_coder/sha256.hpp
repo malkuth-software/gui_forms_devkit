@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 // Copied from Pocket Library (books, books/pocketlibrary/src at 1491290);
 // Pocket Reference keeps its own copy (owner, 2026-11-23).
 #pragma once

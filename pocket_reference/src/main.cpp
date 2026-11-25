@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 // Pocket Reference: GUI.Forms' API reference, read from a pack.
 //
 //   PocketReference [--pack <file>] [--page <id>]

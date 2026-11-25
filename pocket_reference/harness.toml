@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 # Pocket Reference's project file for template_harness (harness/project.py
 # reads it; harness.lock pins the harness). CI uses the harness's toolchain
 # scripts only: the Windows CLANG64 toolchain, the Linux packages and the

@@ -45,5 +45,10 @@ download for the host it runs on.
 
 ## Licence
 
-PolyForm Noncommercial 1.0.0; see `LICENSE`. The pack coder in `pack_coder/`
-is copied from Pocket Library.
+MIT; see `LICENSE` (owner's decision, 2026-11-24: Pocket Reference is the
+all-in-one demonstrator and is MIT like GUI.Forms). The pack coder in
+`pack_coder/` is copied from Pocket Library and is MIT in this copy. The
+fonts, icons and runtime libraries a build ships come from the GUI.Forms SDK
+and keep their own licences: `tools/package.py` copies the SDK's notices
+(`share/licenses/GUIForms`) and, on macOS, the LLVM runtime's into each
+package's `licenses/`. See `THIRD_PARTY_NOTICES.md`.

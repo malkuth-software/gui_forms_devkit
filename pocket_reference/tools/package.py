@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# SPDX-License-Identifier: MIT
 """Packages a built Pocket Reference for download, in dist/.
 
   python3 tools/package.py --build <build dir> --toolkit <GUI.Forms SDK prefix>
