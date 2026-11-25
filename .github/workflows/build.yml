@@ -93,7 +93,8 @@ jobs:
       - name: Configure
         run: |
           cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="${{ steps.own-runtime.outputs.toolchain || 'harness/harness/cmake/llvm22.cmake' }}"
+            -DCMAKE_TOOLCHAIN_FILE="${{ steps.own-runtime.outputs.toolchain || 'harness/harness/cmake/llvm22.cmake' }}" \
+            ${{ steps.own-runtime.outputs.cmake-options }}
       - name: Build
         run: |
           ccache --zero-stats

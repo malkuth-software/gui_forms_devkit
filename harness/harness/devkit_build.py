@@ -64,6 +64,12 @@ PROJECT_FILE: str = 'harness.toml'
 RESOLVED_RECORD: str = '.ci/gui_forms-resolved.json'
 BUILD_ENVIRONMENT_RECORD: str = build_environment.BUILD_ENVIRONMENT_RECORD
 TOOLCHAIN: Path = HARNESS / 'cmake' / 'llvm22.cmake'
+# The three locations own_runtime.py prints. GUI.Forms' Windows toolchain
+# reads them as cache settings (only GUI_FORMS_LIBCXX_PREFIX also from the
+# environment), so the configure passes each with -D, beside
+# GUI_FORMS_MSVC_RUNTIME=OWN, as GUI.Forms' tools/toolkit_configure.py does.
+OWN_RUNTIME_SETTINGS: tuple[str, ...] = ('GUI_FORMS_OWN_RUNTIME_SOURCE', 'GUI_FORMS_OWN_RUNTIME_PREFIX',
+                                         'GUI_FORMS_LIBCXX_PREFIX')
 
 
 class BuildError(Exception):
@@ -158,6 +164,25 @@ def toolchain_file(settings: list[tuple[str, str]]) -> str:
     return result
 
 
+def own_runtime_options(options: Options, settings: list[tuple[str, str]]) -> list[str]:
+    """Windows: the toolchain's own-runtime mode and its three locations, as -D options; nothing elsewhere.
+
+    Without GUI_FORMS_MSVC_RUNTIME=OWN the toolchain takes its Microsoft mode
+    (-D_DLL, --dependent-lib=msvcrt, /DEFAULTLIB:msvcprt.lib) while linking
+    the own runtime's libc++, and every executable fails on duplicate
+    std::exception and std::bad_alloc symbols.
+    """
+    if options.platform != 'windows-x64':
+        return []
+    result: list[str] = ['-DGUI_FORMS_MSVC_RUNTIME=OWN']
+    name: str
+    value: str
+    for name, value in settings:
+        if name in OWN_RUNTIME_SETTINGS:
+            result.append('-D' + name + '=' + value)
+    return result
+
+
 def environment_step(options: Options, settings: list[tuple[str, str]]) -> Step:
     """Step 5: restore_local.py env with every setting and the toolchain file."""
     command: list[str] = tool('restore_local.py') + ['env', '--platform', options.platform]
@@ -176,6 +201,7 @@ def build_steps(options: Options, settings: list[tuple[str, str]], display: bool
     tree: str = str(build_dir(options))
     configure: list[str] = ['cmake', '-S', str(options.app), '-B', tree, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release',
                             '-DCMAKE_TOOLCHAIN_FILE=' + toolchain_file(settings), '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON']
+    configure.extend(own_runtime_options(options, settings))
     if not is_devkit(options):
         configure.append('-DGUI_FORMS_DEVKIT_HARNESS_ROOT=' + HARNESS_ROOT.as_posix())
     if options.allow_full_build:

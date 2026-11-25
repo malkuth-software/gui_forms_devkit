@@ -149,7 +149,7 @@ jobs:
         run: |
           cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="${{ steps.own-runtime.outputs.toolchain || 'harness/harness/cmake/llvm22.cmake' }}" \
-            -DGUI_FORMS_DEVKIT_ALLOW_FULL_BUILD=ON
+            ${{ steps.own-runtime.outputs.cmake-options }} -DGUI_FORMS_DEVKIT_ALLOW_FULL_BUILD=ON
           ccache --zero-stats
           cmake --build "$BUILD_DIR" --parallel 4
           mkdir -p .ci

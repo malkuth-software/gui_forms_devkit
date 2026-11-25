@@ -62,6 +62,21 @@ class DevkitBuildTests(unittest.TestCase):
                                                    '--set', 'GUI_FORMS_LIBCXX_PREFIX=C:/r/libcxx',
                                                    '--set', 'CMAKE_TOOLCHAIN_FILE=C:/t/llvm22-windows-msvc.cmake'])
 
+    def test_windows_configures_the_toolchain_in_its_own_runtime_mode_with_its_three_locations(self) -> None:
+        settings: list[tuple[str, str]] = devkit_build.settings_of(
+            'GUI_FORMS_OWN_RUNTIME_SOURCE=C:/r/stxlib\nGUI_FORMS_OWN_RUNTIME_PREFIX=C:/r/own-runtime\n'
+            'GUI_FORMS_LIBCXX_PREFIX=C:/r/libcxx\nCMAKE_TOOLCHAIN_FILE=C:/t/llvm22-windows-msvc.cmake\n')
+        configure: list[str] = devkit_build.build_steps(self.options('windows-x64'), settings, display=True)[0].command
+        self.assertIn('-DCMAKE_TOOLCHAIN_FILE=C:/t/llvm22-windows-msvc.cmake', configure)
+        self.assertEqual(configure[configure.index('-DGUI_FORMS_MSVC_RUNTIME=OWN'):][:4],
+                         ['-DGUI_FORMS_MSVC_RUNTIME=OWN', '-DGUI_FORMS_OWN_RUNTIME_SOURCE=C:/r/stxlib',
+                          '-DGUI_FORMS_OWN_RUNTIME_PREFIX=C:/r/own-runtime', '-DGUI_FORMS_LIBCXX_PREFIX=C:/r/libcxx'])
+        self.assertFalse([argument for argument in configure if argument.startswith('-DCMAKE_TOOLCHAIN_FILE=')
+                          and argument != '-DCMAKE_TOOLCHAIN_FILE=C:/t/llvm22-windows-msvc.cmake'])
+        # Elsewhere the toolchain has no runtime mode to choose.
+        linux: list[str] = devkit_build.build_steps(self.options('linux-x64'), [], display=True)[0].command
+        self.assertFalse([argument for argument in linux if argument.startswith('-DGUI_FORMS_MSVC_RUNTIME')])
+
     def test_a_consumer_configures_with_llvm22_and_the_guard_of_this_harness(self) -> None:
         steps: list[devkit_build.Step] = devkit_build.build_steps(self.options('linux-x64'), [], display=False)
         self.assertEqual(self.whats(steps), ['configuring', 'building', 'testing'])
@@ -103,6 +118,7 @@ class DevkitBuildTests(unittest.TestCase):
         self.assertIn('CMAKE_TOOLCHAIN_FILE=', lines[4])
         self.assertTrue(lines[5].startswith('would run: cmake -S'))
         self.assertIn('llvm22-windows-msvc.cmake', lines[5])
+        self.assertIn('-DGUI_FORMS_MSVC_RUNTIME=OWN', lines[5])
         self.assertFalse((self.app / '.ci').exists())
 
     def test_an_app_without_its_pin_or_project_is_refused(self) -> None:

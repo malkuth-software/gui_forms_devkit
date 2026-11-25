@@ -19,6 +19,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Windows builds on STXlib's own runtime, as the SDK was built: GUI.Forms'
+# cmake/llvm22-windows-msvc.cmake with GUI_FORMS_MSVC_RUNTIME=OWN and its
+# three locations (the windows-own-runtime action's cmake-options, or
+# devkit_build.py). The toolchain's default Microsoft mode adds -D_DLL,
+# --dependent-lib=msvcrt and /DEFAULTLIB:msvcprt.lib to every target while
+# the SDK's libc++ brings its own std::exception, so each executable (the
+# test suites link first) fails on duplicate symbols; stop here instead.
+if(CMAKE_CXX_COMPILER_TARGET MATCHES "windows-msvc" AND NOT GUI_FORMS_MSVC_RUNTIME STREQUAL "OWN")
+    message(FATAL_ERROR "The devkit builds for ${CMAKE_CXX_COMPILER_TARGET} on STXlib's own runtime, as the SDK "
+                        "was built: configure with -DGUI_FORMS_MSVC_RUNTIME=OWN and GUI_FORMS_OWN_RUNTIME_SOURCE, "
+                        "GUI_FORMS_OWN_RUNTIME_PREFIX and GUI_FORMS_LIBCXX_PREFIX (the windows-own-runtime "
+                        "action's cmake-options, or harness/harness/devkit_build.py)")
+endif()
+
 # The pin: the floor is what find_package's version means, and the major
 # bounds it (GUIFormsConfigVersion accepts the same major only).
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/devkit.toml" _devkit_pin)
