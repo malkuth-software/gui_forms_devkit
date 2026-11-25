@@ -8,7 +8,7 @@ harness that consumer apps build with. MIT; see `LICENSE` and
 ## Layout
 
 ```text
-devkit.toml          the GUI.Forms pin: major 1, floor 1.0.3, channel main
+devkit.toml          the GUI.Forms pin: major 1, floor 1.0.5, channel main
 harness/             the devkit harness (see harness/README.md)
 pocket_reference/    Pocket Reference, with its history
 views/<id>/          demonstrator views, one static library each

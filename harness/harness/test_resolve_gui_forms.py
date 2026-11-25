@@ -68,6 +68,8 @@ class PinTests(unittest.TestCase):
         loaded: resolver.Pin = resolver.load_pin(resolver.DEVKIT_FILE)
         self.assertEqual(loaded.major, 1)
         self.assertEqual(loaded.minimum[0], 1)
+        # The menu cues, the HelpBook port and FormMockup need 1.0.5 (coordinator, 2026-11-25).
+        self.assertGreaterEqual(loaded.minimum, (1, 0, 5))
 
     def test_a_floor_outside_the_major_is_refused(self) -> None:
         path: Path = self.write('[gui_forms]\nrepository = "a/b"\nmajor = 1\nminimum = "2.0.0"\n')
