@@ -1,0 +1,6 @@
+# What build.py puts here: the example is its own workspace.
+/.sdk/
+/.ci/
+/.build/
+/.ccache/
+/.toolchain/

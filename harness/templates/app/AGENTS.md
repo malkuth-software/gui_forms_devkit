@@ -76,9 +76,10 @@ From the workspace root (the directory holding `{{app}}/` and
 
 | What | Command | Where |
 |---|---|---|
-| Build and test | `python3 {{app}}/ci_build.py --jobs 4 --allow-network-inputs` | build host |
-| Against the local lockstep GUI.Forms | `python3 {{app}}/ci_build.py --gui-forms-prefix "$(python3 template_harness/harness/lockstep.py prefix)"` | build host |
-| Configure only (for the state-machine gate) | `python3 {{app}}/ci_build.py --configure-only` | build host |
+| Build and test against the prebuilt SDK | `python3 {{app}}/build.py --jobs 4` | build host |
+| Move to the newest green GUI.Forms in the pin | `python3 {{app}}/build.py --resolve --jobs 4` | build host |
+| Configure only (for the state-machine gate) | `python3 {{app}}/build.py --configure-only` | build host |
+| The devkit's checks (devkit.toml `[checks]` profile) | `python3 {{app}}/build.py check` | anywhere |
 | House style | `python3 -B template_harness/harness/check_house_style.py {{app}}/src {{app}}/tests` | anywhere |
 | Lifetime rules | `python3 -B template_harness/harness/check_lifetime_rules.py {{app}}/src {{app}}/tests` | anywhere |
 | State-machine gate | `HARNESS_PROJECT=template_harness/projects/{{app}}.toml python3 -B template_harness/harness/check_state_machines.py --gate --changed-from origin/main` | build host (needs a configured tree) |

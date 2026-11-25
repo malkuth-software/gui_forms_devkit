@@ -73,7 +73,7 @@ nothing.
 | Path | What |
 |---|---|
 | `src/`, `tests/`, `CMakeLists.txt` | the example app's greeter form, renamed: namespace, stable ids, executable and window title |
-| `ci_build.py`, `fetch_sdk.py`, `gui_forms.lock`, `test_fetch_sdk.py` | the build against the pinned GUI.Forms source SDK; the harness is `../template_harness` (or `HARNESS_ROOT`) |
+| `build.py`, `test_build.py`, `devkit.toml`, `harness.toml` | the build against the prebuilt GUI.Forms SDK through the devkit's `devkit_build.py` and build guard; the GUI.Forms pin (major and floor) and the checks' profile; the app's own project file |
 | `harness.lock` | the harness pin: the step 2 commit |
 | `.github/workflows/ci.yml` | house style, the state-machine gate and the four native builds through the harness's reusable workflows, `@<pin>` |
 | `.claude/settings.json` | the `fransushi` marketplace (github source: this repository, `path` `claude/.claude-plugin/marketplace.json`, `ref` the pin) and every plugin enabled except sushidelivery |

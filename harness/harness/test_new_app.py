@@ -35,7 +35,7 @@ SUSHICOMMS: Path = harness_testing.REPOSITORY / 'claude' / 'plugins' / 'sushicom
 # What templates/app/ must render to, at least.
 APP_FILES: tuple[str, ...] = (
     'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', '.gitignore', '.gitattributes', 'CLAUDE.md', 'AGENTS.md', 'harness.lock',
-    'CMakeLists.txt', 'ci_build.py', 'fetch_sdk.py', 'test_fetch_sdk.py', 'gui_forms.lock',
+    'CMakeLists.txt', 'build.py', 'test_build.py', 'devkit.toml', 'harness.toml',
     'src/greeter.cpp', 'src/greeter.hpp', 'src/main.cpp', 'tests/greeter_tests.cpp',
     '.claude/settings.json', '.claude/agents/paint_box-coder.md', '.claude/agents/paint_box-integrator.md',
     '.claude/agents/paint_box-tedium.md', '.github/workflows/ci.yml',
@@ -155,10 +155,22 @@ class TemplateTests(unittest.TestCase):
         self.assertIn('${{ matrix.runner }}', workflow)
         self.assertIn('namespace paint_box {', (app / 'src/greeter.hpp').read_text(encoding='utf-8'))
         self.assertIn('options.title = "Paint Box";', (app / 'src/main.cpp').read_text(encoding='utf-8'))
-        self.assertIn("/ 'paint-box'", (app / 'ci_build.py').read_text(encoding='utf-8'))
+        # The prebuilt SDK: the devkit's pin (major and floor), the consumer checks, the build guard.
+        pin: dict[str, Any] = tomllib.loads((app / 'devkit.toml').read_text(encoding='utf-8'))
+        self.assertEqual((str(pin['gui_forms']['major']), pin['gui_forms']['minimum']), new_app.gui_forms_pin())
+        self.assertEqual(pin['checks']['profile'], 'consumer')
+        cmake: str = (app / 'CMakeLists.txt').read_text(encoding='utf-8')
+        self.assertIn('DevkitBuildGuard.cmake', cmake)
+        self.assertIn('gui_forms_devkit_build_guard()', cmake)
+        self.assertNotIn('fetch_sdk', cmake)
+        product: project.Project = project.load(app / 'harness.toml')
+        self.assertEqual((product.name, product.source_dir, product.env_prefix), ('paint_box', '.', 'PAINT_BOX'))
+        self.assertIsNone(product.bootstrap.notes_repository)
+        self.assertEqual(product.bootstrap.restore, ('toolchain',))
         ignored: str = (app / '.gitignore').read_text(encoding='utf-8')
         entry: str
-        for entry in ('/template_harness/', '/.build/', '/.ccache/', '/.ci/', '/.toolchain/', '/.bootstrap/',
+        for entry in ('/template_harness/', '/.devkit/', '/.sdk/', '/.build/', '/.ccache/', '/.ci/', '/.toolchain/',
+                      '/.bootstrap/',
                       '/.sushi/state/', '/.sushi/logs/'):
             self.assertIn(entry + '\n', ignored)
 
@@ -203,7 +215,7 @@ class TemplateTests(unittest.TestCase):
             text=True, check=False, env=dict(os.environ, SUSHI_ROLE='orchestrator', SUSHICOMMS_PROJECT=str(app)))
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
 
-    def test_the_rendered_sdk_fetch_tests_pass_in_the_app_layout(self) -> None:
+    def test_the_rendered_build_script_tests_pass_in_the_app_layout(self) -> None:
         app: Path = self.render('app')
         completed: subprocess.CompletedProcess[str] = subprocess.run(
             [sys.executable, '-B', '-m', 'unittest', 'discover', '-s', str(app), '-p', 'test_*.py'],

@@ -5,9 +5,8 @@ name: CI
 # template_harness/projects/{{app}}.toml; its [ci] native_workflow and
 # native_job name this file and the `native` job.
 #
-# Each job builds GUI.Forms from the source SDK pinned in gui_forms.lock
-# (fetch_sdk.py) into .harness-cache/, kept in an Actions cache keyed by the
-# lock and the compiler identity.
+# Each job builds against the prebuilt GUI.Forms SDK devkit.toml pins
+# (build.py: the devkit's devkit_build.py), compiling none of GUI.Forms.
 on:
   push:
     branches: [main]
@@ -27,7 +26,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Test the SDK fetch
+      - name: Test the build script
         run: python3 -B -m unittest discover -s . -p "test_*.py"
   house-style:
     uses: {{harness_repository}}/.github/workflows/harness-house-style.yml@{{harness_commit}}
@@ -42,13 +41,9 @@ jobs:
       product_path: {{app}}
       project: template_harness/projects/{{app}}.toml
       linux_profile: consumer
-      configure_command: python3 {{app}}/ci_build.py --configure-only --allow-network-inputs
-      build_dir: .build/native-linux-x64/{{build_name}}
+      configure_command: python3 {{app}}/build.py --configure-only
+      build_dir: {{app}}/.build/native-linux-x64
       timeout_minutes: 90
-      install_cache_paths: |
-        .harness-cache/gui-forms-[0-9]*
-        !.harness-cache/*.work
-      install_cache_key_files: {{app}}/gui_forms.lock
   native:
     strategy:
       fail-fast: false
@@ -74,9 +69,5 @@ jobs:
       product_path: {{app}}
       project: template_harness/projects/{{app}}.toml
       linux_profile: consumer
-      build_command: python {{app}}/ci_build.py --jobs 4 --allow-network-inputs
+      build_command: python {{app}}/build.py --jobs 4
       timeout_minutes: 90
-      install_cache_paths: |
-        .harness-cache/gui-forms-[0-9]*
-        !.harness-cache/*.work
-      install_cache_key_files: {{app}}/gui_forms.lock

@@ -88,6 +88,20 @@ view shows one of this repository's files
 (`GUI_FORMS_DEVKIT_CODE_ZOOM_SOURCE`, default `views/code_zoom/code_sheet.cpp`)
 where GUI.Forms showed one of its own.
 
+## Local commands
+
+Anyone can run these from a devkit checkout; none needs in-house access.
+
+```sh
+sh harness/bootstrap.sh new-app paint_box ~/apps/paint_box   # a new app, git init, never pushed
+cd ~/apps/paint_box && python3 build.py --jobs 4              # resolve, fetch, build, test
+sh harness/bootstrap.sh own-runtime --workspace DIR           # Windows: the own runtime and its toolchain file
+sh harness/bootstrap.sh --workspace DIR --project gui_forms_devkit   # this devkit, built as a consumer
+```
+
+`harness/harness/devkit_build.py --app .` builds this devkit the same way
+(`--project harness/projects/gui_forms_devkit.toml --restore-devkit-cache`).
+
 ## CI
 
 | Workflow | When | What |

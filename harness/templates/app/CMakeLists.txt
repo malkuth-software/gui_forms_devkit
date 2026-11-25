@@ -1,11 +1,39 @@
 cmake_minimum_required(VERSION 3.25)
 project({{App}} LANGUAGES CXX)
 
-# GUI.Forms comes from an installed SDK: fetch_sdk.py unpacks the release
-# pinned in gui_forms.lock and prints its prefix, which goes in
-# CMAKE_PREFIX_PATH. Configure with the toolchain file the SDK was built with
-# (the harness's harness/cmake/llvm22.cmake).
+# GUI.Forms comes prebuilt: build.py (the devkit's devkit_build.py) resolves
+# devkit.toml's pin to one green build and unpacks its SDK at
+# .sdk/gui-forms-sdk, so nothing of GUI.Forms is compiled here. Configure with
+# the toolchain file the SDK was built with: the devkit's
+# harness/cmake/llvm22.cmake, or GUI.Forms' Windows own-runtime toolchain
+# (build.py passes the right one).
 #
+# The devkit's DevkitBuildGuard.cmake puts that SDK first on the package path,
+# compiles through ccache with the environment the SDK was built in, and stops
+# a configure or build that would compile GUI.Forms from source or miss the
+# SDK, saying why; -DGUI_FORMS_DEVKIT_ALLOW_FULL_BUILD=ON builds anyway.
+set(GUI_FORMS_DEVKIT_HARNESS_ROOT "" CACHE PATH
+    "The devkit's harness directory, holding harness/cmake/DevkitBuildGuard.cmake")
+if(NOT GUI_FORMS_DEVKIT_HARNESS_ROOT)
+    foreach(candidate IN ITEMS "${CMAKE_CURRENT_SOURCE_DIR}/.." "${CMAKE_CURRENT_SOURCE_DIR}/../template_harness"
+                               "${CMAKE_CURRENT_SOURCE_DIR}/.devkit/harness")
+        if(EXISTS "${candidate}/harness/cmake/DevkitBuildGuard.cmake")
+            set(GUI_FORMS_DEVKIT_HARNESS_ROOT "${candidate}" CACHE PATH
+                "The devkit's harness directory, holding harness/cmake/DevkitBuildGuard.cmake" FORCE)
+            break()
+        endif()
+    endforeach()
+endif()
+if(NOT EXISTS "${GUI_FORMS_DEVKIT_HARNESS_ROOT}/harness/cmake/DevkitBuildGuard.cmake")
+    message(FATAL_ERROR "No devkit harness: run build.py, which checks the devkit out at .devkit/ "
+                        "(harness.lock), or set GUI_FORMS_DEVKIT_HARNESS_ROOT to a gui_forms_devkit's harness/")
+endif()
+set(GUI_FORMS_DEVKIT_WORKSPACE "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH
+    "The workspace root: it holds .sdk/gui-forms-sdk, .ccache and .ci")
+include("${GUI_FORMS_DEVKIT_HARNESS_ROOT}/harness/cmake/DevkitBuildGuard.cmake")
+gui_forms_devkit_use_sdk()
+gui_forms_devkit_cache_launcher()
+
 # Controls is the renderer-free toolkit the form's test links. Application is
 # the native host, present when the SDK was built with one; it already holds
 # the retained engine, so no program here links both (the SDK's one linking
@@ -70,3 +98,6 @@ if(TARGET GUIForms::Application)
     add_test(NAME {{app}}_starts COMMAND {{app}} --close-when-ready)
     set_tests_properties({{app}}_starts PROPERTIES TIMEOUT 60)
 endif()
+
+# Runs when configuring ends, once every target exists, and before every build.
+gui_forms_devkit_build_guard()

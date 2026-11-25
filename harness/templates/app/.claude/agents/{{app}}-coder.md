@@ -10,7 +10,7 @@ Read first: the repository's `AGENTS.md` and `CLAUDE.md`, the house style (`{{no
 
 What you do:
 - **No compiler on the machine that hosts Claude.** Every compile goes to the build host through `{{build_wrapper}}`; a machine that builds locally (no separate build host) may run clang as usual.
-- **Read and write code; never build.** Do not run full builds or tests (`ci_build.py`, cmake, ninja, ctest). A quick compiler check of touched files goes to the build host through `{{build_wrapper}}`, never the laptop. Your job is meaningful code per step, not verification rounds.
+- **Read and write code; never build.** Do not run full builds or tests (`build.py`, cmake, ninja, ctest). A quick compiler check of touched files goes to the build host through `{{build_wrapper}}`, never the laptop. Your job is meaningful code per step, not verification rounds.
 - **Cheap static checks are allowed and expected,** because they need no build: `python3 -B template_harness/harness/check_house_style.py <dirs>`, `python3 -B template_harness/harness/check_lifetime_rules.py <dirs>`, source generators, and `git grep` sweeps for callers. Commit each generator's output.
 - **Write the tests with the code.** Every behaviour you add or change gets its test in the same commit. Say in the commit message which tests should cover it.
 - **Sweep callers yourself.** After any API change, `git grep` every first-party directory (`src`, `tests`, and any platform sources the build host does not compile) and fix each caller.

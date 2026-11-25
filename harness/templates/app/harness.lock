@@ -1,6 +1,10 @@
-# The template_harness commit {{title}} builds with (template_harness docs/adopting.md §3).
-# Bump with: python3 ../template_harness/harness/lock.py bump --to <ref>
-# (the plugins load from ../template_harness/claude, kept at this pin by `lock.py checkout`).
+# The harness commit {{title}} builds with: the devkit (gui_forms_devkit), whose
+# harness/ holds the build, the build guard and the checks. build.py checks it
+# out at .devkit/ (ignored) when no other devkit is given. Bump with:
+#   python3 .devkit/harness/harness/lock.py bump --to <ref>
+# In the in-house sibling layout this names template_harness instead, kept at
+# the pin in ../template_harness by `lock.py checkout` (the plugins load from
+# ../template_harness/claude).
 [harness]
 repository = "{{harness_repository}}"
 commit = "{{harness_commit}}"
