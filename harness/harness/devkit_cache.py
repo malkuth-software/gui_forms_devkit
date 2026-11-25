@@ -294,7 +294,11 @@ def main(argv: list[str] | None = None) -> int:
             if completed.returncode != 0:
                 print('devkit_cache: ninja -t deps failed: ' + completed.stderr.strip(), file=sys.stderr)
                 return 1
-            pack(workspace, arguments.platform, arguments.build_dir, arguments.revision, arguments.compiler,
+            compiler: Path = arguments.compiler
+            # MSYS2's command -v names clang++ without its .exe.
+            if not compiler.is_file() and Path(str(compiler) + '.exe').is_file():
+                compiler = Path(str(compiler) + '.exe')
+            pack(workspace, arguments.platform, arguments.build_dir, arguments.revision, compiler,
                  completed.stdout, dict(os.environ))
         elif arguments.command == 'restore':
             restore(workspace, arguments.platform, arguments.repository, arguments.tag)
