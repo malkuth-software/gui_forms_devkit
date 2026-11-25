@@ -44,6 +44,7 @@ set(GUI_FORMS_DEVKIT_RESOLVED "${GUI_FORMS_DEVKIT_WORKSPACE}/.ci/gui_forms-resol
 
 option(GUI_FORMS_DEVKIT_BUILD_PROGRAMS "Build the demonstration programs (programs/)" ON)
 option(GUI_FORMS_DEVKIT_BUILD_POCKET_REFERENCE "Build Pocket Reference (pocket_reference/)" ON)
+option(GUI_FORMS_DEVKIT_BUILD_TESTS "Build the program suites (tests/programs_tests.cmake)" ON)
 
 add_subdirectory(views)
 if(GUI_FORMS_DEVKIT_BUILD_PROGRAMS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/programs/CMakeLists.txt")
@@ -51,6 +52,10 @@ if(GUI_FORMS_DEVKIT_BUILD_PROGRAMS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/progr
 endif()
 if(GUI_FORMS_DEVKIT_BUILD_POCKET_REFERENCE)
     add_subdirectory(pocket_reference)
+endif()
+if(GUI_FORMS_DEVKIT_BUILD_TESTS)
+    enable_testing()
+    include(tests/programs_tests.cmake)
 endif()
 
 gui_forms_devkit_build_guard()

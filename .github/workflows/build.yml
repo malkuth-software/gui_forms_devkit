@@ -101,6 +101,15 @@ jobs:
           mkdir -p .ci
           ccache --print-stats > .ci/ccache-stats.txt
           ccache --show-stats
+      # The program suites that moved from gui_forms_tests (tests/), headless;
+      # Linux gives them a virtual display.
+      - name: Run the program tests
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a ctest --test-dir "$BUILD_DIR" --output-on-failure --timeout 300
+          else
+            ctest --test-dir "$BUILD_DIR" --output-on-failure --timeout 300
+          fi
       - name: Check the views and programs (strict profile)
         if: matrix.platform == 'linux-x64'
         run: python -B harness/harness/run_checks.py --profile strict views programs
