@@ -133,9 +133,15 @@ class ProjectFileTests(unittest.TestCase):
         loaded = parsed(tables)
         self.assertEqual((loaded.checkpoint.tree, loaded.checkpoint.verify, loaded.checkpoint.merge_method),
                          ('tree', ('make',), 'merge'))
+        # No notes unless declared (a consumer's project, the devkit's own); every restore that applies.
         self.assertEqual((loaded.bootstrap.notes_repository, loaded.bootstrap.notes_branch,
-                          loaded.bootstrap.projects_repository, loaded.bootstrap.smoke),
-                         ('owner/notes', 'example', 'owner/projects', ('{python}', 'smoke.py')))
+                          loaded.bootstrap.projects_repository, loaded.bootstrap.smoke, loaded.bootstrap.restore),
+                         (None, 'example', 'owner/projects', ('{python}', 'smoke.py'), None))
+        declared: project.Project = parsed(tables + 'notes_repository = "owner/notes"\nrestore = ["toolchain"]\n')
+        self.assertEqual((declared.bootstrap.notes_repository, declared.bootstrap.restore),
+                         ('owner/notes', ('toolchain',)))
+        with self.assertRaisesRegex(ValueError, 'bootstrap.restore names unknown kinds: sdk'):
+            parsed(tables + 'restore = ["toolchain", "sdk"]\n')
         with self.assertRaisesRegex(ValueError, 'merge_method'):
             parsed(tables.replace('verify = ["make"]', 'verify = ["make"]\nmerge_method = "fast"'))
         with self.assertRaisesRegex(ValueError, 'checkpoint.verify'):

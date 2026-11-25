@@ -1,6 +1,8 @@
 # Run bootstrap.sh with Git Bash, passing every argument through:
 #
 #   powershell -File bootstrap.ps1 --workspace D:\work --project gui_forms [--dry-run] ...
+#   powershell -File bootstrap.ps1 new-app paint_box D:\apps\paint_box
+#   powershell -File bootstrap.ps1 own-runtime --workspace D:\apps\paint_box
 #
 # Git Bash is found beside git.exe on PATH (<Git>\cmd\git.exe -> <Git>\bin\bash.exe),
 # else in the default install directory. Without it the script stops and says so.

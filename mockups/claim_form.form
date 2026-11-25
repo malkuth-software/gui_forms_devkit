@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- An insurance claim in the windows-professional look: three tabs, masked
+     fields, date pickers, choices, a tab order and a check before submit.
+     Its fixture is claim_form.fixture and its sheet claim_form.theme.css;
+     open it from the catalogue by its name, claim_form. The handlers
+     (on-...) record themselves: the status line, standard output and the
+     mockup_events tool show them. -->
+<form xmlns="urn:gui-forms:form:1" id="claim.window"
+    text="Insurance claim"
+    client-size="640 520"
+    accept-button="claim.submit"
+    cancel-button="claim.cancel">
+  <panel id="claim.root">
+    <tab-control id="claim.tabs"
+        accessible-name="Claim sections"
+        bounds="12 12 616 438"
+        tab-index="0">
+
+      <tab-page id="claim.holder" text="Policyholder">
+        <label id="claim.holder.name.caption" text="Full name" bounds="16 20 140 24"/>
+        <text-box id="claim.holder.name"
+            accessible-name="Full name"
+            placeholder-text="As on the policy"
+            bounds="160 16 300 28"
+            tab-index="0">
+          <bind property="text" to="claim" field="holder_name"/>
+        </text-box>
+
+        <label id="claim.holder.policy.caption" text="Policy number" bounds="16 60 140 24"/>
+        <masked-text-box id="claim.holder.policy"
+            accessible-name="Policy number"
+            mask="LL-000000"
+            text="HC-123456"
+            causes-validation="true"
+            on-validating="check_policy_number"
+            bounds="160 56 180 28"
+            tab-index="1"/>
+
+        <label id="claim.holder.phone.caption" text="Telephone" bounds="16 100 140 24"/>
+        <masked-text-box id="claim.holder.phone"
+            accessible-name="Telephone"
+            mask="(000) 000-0000"
+            bounds="160 96 180 28"
+            tab-index="2"/>
+
+        <label id="claim.holder.birth.caption" text="Date of birth" bounds="16 140 140 24"/>
+        <date-time-picker id="claim.holder.birth"
+            accessible-name="Date of birth"
+            bounds="160 136 240 28"
+            tab-index="3"/>
+
+        <label id="claim.holder.region.caption" text="Region" bounds="16 180 140 24"/>
+        <combo-box id="claim.holder.region"
+            accessible-name="Region"
+            drop-down-style="drop-down-list"
+            placeholder-text="Choose a region"
+            on-selected-index-changed="region_chosen"
+            bounds="160 176 240 28"
+            tab-index="4"/>
+
+        <check-box id="claim.holder.contact"
+            text="Contact me by telephone about this claim"
+            bounds="160 220 320 28"
+            tab-index="5">
+          <bind property="checked" to="contact_by_phone"/>
+        </check-box>
+      </tab-page>
+
+      <tab-page id="claim.incident" text="Incident">
+        <label id="claim.incident.date.caption" text="Date of loss" bounds="16 20 140 24"/>
+        <date-time-picker id="claim.incident.date"
+            accessible-name="Date of loss"
+            bounds="160 16 240 28"
+            tab-index="0"/>
+
+        <label id="claim.incident.kind.caption" text="Kind of loss" bounds="16 60 140 24"/>
+        <combo-box id="claim.incident.kind"
+            accessible-name="Kind of loss"
+            drop-down-style="drop-down-list"
+            items="Theft Fire 'Water damage' 'Storm damage' 'Accidental damage' Other"
+            selected-index="2"
+            bounds="160 56 240 28"
+            tab-index="1"/>
+
+        <label id="claim.incident.place.caption" text="Where" bounds="16 100 140 24"/>
+        <text-box id="claim.incident.place"
+            accessible-name="Where it happened"
+            bounds="160 96 420 28"
+            tab-index="2">
+          <bind property="text" to="claim" field="incident_place"/>
+        </text-box>
+
+        <label id="claim.incident.account.caption" text="What happened" bounds="16 140 140 24"/>
+        <text-box id="claim.incident.account"
+            accessible-name="What happened"
+            multiline="true"
+            bounds="160 136 420 120"
+            tab-index="3">
+          <bind property="text" to="claim" field="incident_account"/>
+        </text-box>
+
+        <check-box id="claim.incident.police"
+            text="Reported to the police"
+            bounds="160 268 240 28"
+            tab-index="4">
+          <bind property="checked" to="police_report"/>
+        </check-box>
+        <label id="claim.incident.reference.caption" text="Report reference" bounds="16 308 140 24"/>
+        <masked-text-box id="claim.incident.reference"
+            accessible-name="Police report reference"
+            mask="AAAA/00000"
+            bounds="160 304 180 28"
+            tab-index="5"/>
+      </tab-page>
+
+      <tab-page id="claim.items" text="Items">
+        <label id="claim.items.caption"
+            text="What was lost or damaged, with what you paid"
+            classes="section-heading"
+            bounds="16 12 560 24"/>
+        <data-grid-view id="claim.items.grid"
+            accessible-name="Claimed items"
+            read-only="true"
+            bounds="16 44 576 300"
+            tab-index="0"/>
+      </tab-page>
+    </tab-control>
+
+    <label id="claim.status"
+        classes="status"
+        bounds="16 470 300 24">
+      <bind property="text" to="claim" field="status"/>
+    </label>
+    <button id="claim.check" text="Check" bounds="340 466 88 32" tab-index="1"
+        on-click="check_claim"/>
+    <button id="claim.submit" text="Submit" bounds="436 466 88 32" tab-index="2" classes="default-action">
+      <bind property="command" to="submit_claim"/>
+    </button>
+    <button id="claim.cancel" text="Cancel" bounds="532 466 88 32" tab-index="3">
+      <bind property="command" to="cancel_claim"/>
+    </button>
+  </panel>
+</form>

@@ -2,6 +2,9 @@
 # <workspace>/.build, ...); they are listed here too, so a checkout used as a
 # workspace root never commits them (docs/adopting.md in template_harness).
 /template_harness/
+# The devkit build.py checks out, and the prebuilt SDK it unpacks.
+/.devkit/
+/.sdk/
 /.build/
 /.ccache/
 /.ci/

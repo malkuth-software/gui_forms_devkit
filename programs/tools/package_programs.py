@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Package the built GUI.Forms programs for one platform.
 
+In gui_forms_devkit the programs build against the prebuilt GUI.Forms SDK
+(harness/harness/resolve_gui_forms.py fetch), so what GUI.Forms ships with a
+program comes from that SDK, never from a GUI.Forms checkout: the font
+notices from its share/GUIForms/fonts ($GUI_FORMS_FONTS in programs.json) and
+the third-party notices from its share/licenses/GUIForms ($GUI_FORMS_SDK in
+packaging/licenses.json). --sdk names the SDK; the default is the devkit's
+fixed path, .sdk/gui-forms-sdk.
+
 Reads packaging/programs.json, finds what the build directory produced for each
 enabled program, and writes per-program artifacts plus SHA256SUMS.txt and a
 packages-<platform>.json receipt that tools/smoke_package.py and
@@ -35,6 +43,13 @@ from pathlib import Path
 from typing import Any
 
 ROOT: Path = Path(__file__).resolve().parents[1]
+DEVKIT_ROOT: Path = ROOT.parent
+DEFAULT_SDK: Path = DEVKIT_ROOT / ".sdk/gui-forms-sdk"
+# Where a notice source begins with one of these, it is read from the SDK.
+SDK_NOTICES_PREFIX: str = "$GUI_FORMS_SDK"
+SDK_FONTS_PREFIX: str = "$GUI_FORMS_FONTS"
+SDK_NOTICES_PATH: str = "share/licenses/GUIForms"
+SDK_FONTS_PATH: str = "share/GUIForms/fonts"
 MANIFEST_PATH: Path = ROOT / "packaging/programs.json"
 LICENSES_PATH: Path = ROOT / "packaging/licenses.json"
 PLATFORMS: tuple[str, ...] = ("macos-arm64", "windows-x64", "linux-x64", "linux-arm64")
@@ -241,6 +256,10 @@ class Program:
     # (GUI_FORMS_INSTALL_FALLBACK_FONTS). The runtime works without them,
     # falling back as for any missing face.
     fallback_fonts: bool
+    # The arguments an installed launcher passes (the Windows Start menu
+    # shortcut, the Linux launcher behind the menu entry): a program whose
+    # bare start is a developer harness names the end-user start here.
+    launch_arguments: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -345,6 +364,10 @@ def validate_manifest(data: dict[str, Any]) -> Manifest:
         extra = smoke.get("extra_arguments", [])
         _require(isinstance(extra, list) and all(isinstance(argument, str) for argument in extra),
                  where + ": smoke.extra_arguments must be a list of strings")
+        launch = record.get("launch_arguments", [])
+        _require(isinstance(launch, list) and all(isinstance(argument, str) and re.fullmatch(r"--[a-z0-9][a-z0-9-]*", argument)
+                                                  for argument in launch),
+                 where + ": launch_arguments must be a list of plain --flags (no spaces or quotes)")
         platforms_data = record.get("platforms")
         _require(isinstance(platforms_data, dict) and platforms_data, where + ": 'platforms' must be a non-empty object")
         entries: dict[str, PlatformEntry] = {}
@@ -375,7 +398,8 @@ def validate_manifest(data: dict[str, Any]) -> Manifest:
             _require(name in entries, f"{where}: required platform {name} has no platform entry")
             _require(not entries[name].planned, f"{where}: required platform {name} cannot be a planned target")
         programs.append(Program(identifier, display, description, bool(record["enabled"]), status,
-                                tuple(required), automation, dict(smoke), entries, bool(record["fallback_fonts"])))
+                                tuple(required), automation, dict(smoke), entries, bool(record["fallback_fonts"]),
+                                tuple(launch)))
     return Manifest({key: str(value) for key, value in vendor.items()},
                     {"source": [fonts["source"]], "notices": list(fonts["notices"]),
                      "fallback_notices": list(fonts["fallback_notices"])},
@@ -618,12 +642,26 @@ def stx_source_directory(build_dir: Path | None, explicit: Path | None) -> Path 
     return None
 
 
+def sdk_source(text: str, sdk: Path) -> Path | None:
+    """The SDK file a $GUI_FORMS_SDK or $GUI_FORMS_FONTS source names (the prefix alone: its directory), or None
+    when the source names neither."""
+    prefix: str
+    path: str
+    for prefix, path in ((SDK_NOTICES_PREFIX, SDK_NOTICES_PATH), (SDK_FONTS_PREFIX, SDK_FONTS_PATH)):
+        if text == prefix:
+            return sdk / path
+        if text.startswith(prefix + "/"):
+            return sdk / path / text[len(prefix) + 1:]
+    return None
+
+
 class Packager:
     def __init__(self, manifest: Manifest, platform: str, build_dir: Path, version: str, out: Path,
                  revision: str, dry_run: bool, runtime: Path | None, runtime_dir: Path | None,
-                 installer: bool, log=print, stx_source: Path | None = None) -> None:
+                 installer: bool, log=print, stx_source: Path | None = None, sdk: Path = DEFAULT_SDK) -> None:
         self.manifest = manifest
         self.stx_source = stx_source
+        self.sdk = sdk
         self.platform = platform
         self.build_dir = build_dir
         self.version = version
@@ -658,7 +696,8 @@ class Packager:
         copy) is removed, as are the fallback notices of a program packaged
         without the fallback faces: the package holds exactly its licences.
         """
-        source = ROOT / self.manifest.fonts["source"][0]
+        source_text: str = self.manifest.fonts["source"][0]
+        source: Path = sdk_source(source_text, self.sdk) or ROOT / source_text
         destination.mkdir(parents=True, exist_ok=True)
         notices = self.manifest.font_notices(program)
         for name in notices:
@@ -689,7 +728,7 @@ class Packager:
             if platforms and self.platform not in platforms:
                 continue
             source_text: str = notice["source"]
-            source: Path | None = ROOT / source_text
+            source: Path | None = sdk_source(source_text, self.sdk) or ROOT / source_text
             for prefix, base in prefix_env.items():
                 # The separator keeps $STX from matching $STXLIB paths.
                 if source_text.startswith(prefix + "/"):
@@ -954,6 +993,16 @@ class Packager:
             elif path.is_dir():
                 directories.append(relative)
         removals = [f'  RMDir "$INSTDIR\\{relative}"' for relative in sorted(directories, key=len, reverse=True)]
+        # The default install root and each folder above it up to the base
+        # ($LOCALAPPDATA\Rainstar\GUI.Forms, then $LOCALAPPDATA\Rainstar), innermost
+        # first; RMDir leaves any that still hold another program.
+        install_root = self.manifest.vendor["windows_install_root"]
+        roots: list[str] = []
+        while "\\" in install_root:
+            roots.append(f'  RMDir "{install_root}"')
+            install_root = install_root.rsplit("\\", 1)[0]
+        # Uninstall key EstimatedSize: the installed size in KiB.
+        size_kb = (sum(path.stat().st_size for path in bundle.rglob("*") if path.is_file()) + 1023) // 1024
         key = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + self.manifest.vendor["windows_uninstall_prefix"] + program.id
         values = {
             "@DISPLAY_NAME@": program.display_name,
@@ -964,9 +1013,12 @@ class Packager:
             "@VENDOR@": self.manifest.vendor["name"],
             "@BUNDLE@": str(bundle).replace("/", "\\"),
             "@EXECUTABLE@": entry.executable,
+            "@LAUNCH_ARGUMENTS@": " ".join(program.launch_arguments),
             "@UNINSTALL_KEY@": key,
             "@UNINSTALL_FILES@": "\n".join(files),
             "@UNINSTALL_DIRECTORIES@": "\n".join(removals),
+            "@UNINSTALL_ROOTS@": "\n".join(roots),
+            "@ESTIMATED_SIZE_KB@": str(size_kb),
         }
         for placeholder, value in values.items():
             template = template.replace(placeholder, value)
@@ -1106,7 +1158,8 @@ class Packager:
         shutil.copytree(bundle, installed)
         launcher = root / "usr/bin" / deb_name
         launcher.parent.mkdir(parents=True)
-        launcher.write_text(f'#!/bin/sh\nexec "{install_dir}/{entry.executable}" "$@"\n', encoding="utf-8")
+        arguments = "".join(" " + argument for argument in program.launch_arguments)
+        launcher.write_text(f'#!/bin/sh\nexec "{install_dir}/{entry.executable}"{arguments} "$@"\n', encoding="utf-8")
         launcher.chmod(0o755)
         desktop = root / "usr/share/applications" / (deb_name + ".desktop")
         desktop.parent.mkdir(parents=True)
@@ -1211,6 +1264,9 @@ def main(argv: list[str] | None = None) -> int:
                              "No DLL is copied from it.")
     parser.add_argument("--stx-source", type=Path, default=None,
                         help="the stx checkout whose notices ship (default: the one the build fetched at stx.lock)")
+    parser.add_argument("--sdk", type=Path, default=DEFAULT_SDK,
+                        help="the prebuilt GUI.Forms SDK whose fonts' and third parties' notices ship "
+                             "(default: the devkit's .sdk/gui-forms-sdk)")
     parser.add_argument("--no-installer", action="store_true", help="archives only; skip pkg/setup.exe/deb")
     parser.add_argument("--dry-run", action="store_true", help="print the plan; run no external tool and write nothing")
     args = parser.parse_args(argv)
@@ -1231,7 +1287,7 @@ def main(argv: list[str] | None = None) -> int:
         for tool in required_tools(platform):
             print(f"  tool {tool}: {'present' if shutil.which(tool) else 'absent (only needed for a real run)'}")
     packager = Packager(manifest, platform, build_dir, args.version, out, revision, args.dry_run,
-                        runtime, args.runtime_dir, not args.no_installer, stx_source=args.stx_source)
+                        runtime, args.runtime_dir, not args.no_installer, stx_source=args.stx_source, sdk=args.sdk)
     records: list[dict[str, Any]] = []
     for plan in plans:
         if not plan.packages:

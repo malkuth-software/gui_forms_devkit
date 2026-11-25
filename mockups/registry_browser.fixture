@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The registry browser's keys and values (registry_browser.form). -->
+<fixture xmlns="urn:gui-forms:fixture:1">
+  <tree shown-in="registry.keys">
+    <item text="Computer" expanded="true">
+      <item text="HKEY_CLASSES_ROOT"/>
+      <item text="HKEY_CURRENT_USER" expanded="true">
+        <item text="Console"/>
+        <item text="Environment"/>
+        <item text="Software" expanded="true">
+          <item text="Contoso" expanded="true">
+            <item id="ledger" text="Ledger"/>
+            <item text="Tracker"/>
+          </item>
+          <item text="Fabrikam"/>
+        </item>
+      </item>
+      <item text="HKEY_LOCAL_MACHINE"/>
+      <item text="HKEY_USERS"/>
+    </item>
+  </tree>
+
+  <records name="ledger_values" columns="name type data" shown-in="registry.values">
+    <row values="'(Default)' REG_SZ '(value not set)'"/>
+    <row values="InstallPath REG_SZ 'C:\\Program Files\\Contoso\\Ledger'"/>
+    <row values="Version REG_SZ 4.2.1"/>
+    <row values="AutoSave REG_DWORD '0x00000001 (1)'"/>
+    <row values="RecentFiles REG_MULTI_SZ 'Q3.ledger Q4.ledger'"/>
+  </records>
+</fixture>

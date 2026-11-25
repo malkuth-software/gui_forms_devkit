@@ -8,7 +8,7 @@
 [gui_forms]
 repository = "malkuth-software/gui_forms"
 major = 1
-minimum = "1.0.3"
+minimum = "1.0.5"
 # "main": the newest build-<sha> pre-release carrying every platform's SDK and
 # cache; "stable": the newest v<major>.* release.
 channel = "main"

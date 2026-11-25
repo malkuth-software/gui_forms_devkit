@@ -207,21 +207,21 @@ void CorrespondenceShell::build_menu() {
             folder_commands_[index]));
     }
     std::vector<MenuStripItemSpec> items;
-    items.push_back({"correspondence.menu.file", "File",
+    items.push_back({"correspondence.menu.file", "&File",
                      {menu_item("correspondence.menu.file.new", new_message_command_)}});
-    items.push_back({"correspondence.menu.edit", "Edit",
+    items.push_back({"correspondence.menu.edit", "&Edit",
                      {menu_item("correspondence.menu.edit.mark-unread", mark_unread_command_),
                       menu_item("correspondence.menu.edit.flag", flag_command_),
                       separator("correspondence.menu.edit.separator"),
                       menu_item("correspondence.menu.edit.search", search_command_)}});
-    items.push_back({"correspondence.menu.view", "View", std::move(view_items)});
-    items.push_back({"correspondence.menu.message", "Message",
+    items.push_back({"correspondence.menu.view", "&View", std::move(view_items)});
+    items.push_back({"correspondence.menu.message", "&Message",
                      {menu_item("correspondence.menu.message.reply", reply_command_),
                       menu_item("correspondence.menu.message.forward", forward_command_),
                       separator("correspondence.menu.message.separator"),
                       menu_item("correspondence.menu.message.archive", archive_command_),
                       menu_item("correspondence.menu.message.delete", delete_command_)}});
-    items.push_back({"correspondence.menu.help", "Help",
+    items.push_back({"correspondence.menu.help", "&Help",
                      {menu_item("correspondence.menu.help.about", about_command_)}});
     (*menu_).set_items(std::move(items));
     add_child(menu_);
@@ -299,6 +299,7 @@ void CorrespondenceShell::build_panes() {
     (*split_).first_minimum = 140.0;
     (*split_).second_minimum = 320.0;
     (*split_).dock = DockStyle::fill;
+    (*split_).accessible_name = "Folders and messages";
     add_child(split_);
     (*(*split_).first_panel()).background = navigation;
     (*(*split_).second_panel()).background = canvas;
@@ -323,6 +324,7 @@ void CorrespondenceShell::build_panes() {
     (*content_split_).first_minimum = 100.0;
     (*content_split_).second_minimum = 180.0;
     (*content_split_).dock = DockStyle::fill;
+    (*content_split_).accessible_name = "Messages and reading pane";
     (*(*split_).second_panel()).add_child(content_split_);
     (*(*content_split_).first_panel()).background = paper;
     (*(*content_split_).second_panel()).background = paper;
@@ -391,7 +393,7 @@ void CorrespondenceShell::project_folders() {
         item.text = std::string(folder_name(folder));
         const std::size_t unread = model_.unread_count(folder);
         if (unread > 0U) {
-            item.text += "  (" + std::to_string(unread) + ")";
+            item.text += " (" + std::to_string(unread) + ")";
         }
         items.push_back(std::move(item));
     }

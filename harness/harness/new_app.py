@@ -63,6 +63,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 
 import project
 
@@ -89,6 +90,9 @@ SKIPPED_NAMES: frozenset[str] = frozenset({'__pycache__', '.DS_Store'})
 SEAT_ROLES: tuple[tuple[str, str], ...] = (('orchestrator', 'orchestrator'), ('w1', 'coder'),
                                            ('integrator', 'integrator'))
 STEPS: int = 8
+# The devkit's own GUI.Forms pin, beside this harness; a new app starts on the same major and floor.
+DEVKIT_FILE: Path = REPOSITORY.parent / 'devkit.toml'
+DEFAULT_PIN: tuple[str, str] = ('1', '1.0.5')
 
 
 class NewAppError(Exception):
@@ -398,6 +402,17 @@ class Plan:
     options: dict[str, str]
 
 
+def gui_forms_pin(path: Path = DEVKIT_FILE) -> tuple[str, str]:
+    """The devkit's [gui_forms] major and minimum (the defaults when this harness is not inside a devkit)."""
+    if not path.is_file():
+        return DEFAULT_PIN
+    table: object = tomllib.loads(path.read_text(encoding='utf-8')).get('gui_forms')
+    if not isinstance(table, dict) or 'major' not in table or 'minimum' not in table:
+        raise NewAppError(str(path) + ' has no [gui_forms] major and minimum')
+    pin: tuple[str, str] = (str(table['major']), str(table['minimum']))
+    return pin
+
+
 def values_for(plan: Plan, harness_commit: str) -> dict[str, str]:
     """The template values; the harness commit is the pin from step 2."""
     names: Names = plan.names
@@ -417,6 +432,7 @@ def values_for(plan: Plan, harness_commit: str) -> dict[str, str]:
         'workers_dir': plan.options['workers_dir'] or workspace_word + '/' + names.app + '_workers',
         'projects_dir': plan.options['projects_dir'] or workspace_word + '/projects',
         'notes_dir': plan.options['notes_dir'] or workspace_word + '/notes',
+        'gui_forms_major': gui_forms_pin()[0], 'gui_forms_minimum': gui_forms_pin()[1],
     }
     return values
 

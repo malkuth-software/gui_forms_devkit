@@ -1,7 +1,7 @@
 // The data-workbench demonstrator on this host (owner, 2026-11-22;
 // demo/data_workbench/data_workbench.hpp): fifty thousand orders on a
 // virtual DataGridView with a find panel, a column chooser and layouts.
-#include "windows_host.hpp"
+#include "gui_forms/platform/windows_host.hpp"
 #include "data_workbench.hpp"
 #include "data_workbench_program.hpp"
 #include "program_options.hpp"

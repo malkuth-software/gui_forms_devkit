@@ -3,7 +3,7 @@
 // a minimap to a few characters, with --bench and --headless --capture.
 #include "code_zoom.hpp"
 #include "code_zoom_program.hpp"
-#include "macos_host.hpp"
+#include "gui_forms/platform/macos_host.hpp"
 #include "program_options.hpp"
 
 #include <memory>

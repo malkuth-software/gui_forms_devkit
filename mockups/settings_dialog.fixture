@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The settings dialog's values (settings_dialog.form). -->
+<fixture xmlns="urn:gui-forms:fixture:1">
+  <value name="autosave" value="true"/>
+  <value name="interval" value="10"/>
+</fixture>

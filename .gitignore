@@ -3,6 +3,13 @@
 /.sdk/
 /.ci/
 /.harness-cache/
+# What bootstrap.py and the tools put in a workspace rooted here: the in-house
+# notes (--in-house only), the compiler cache and the restored toolchain.
+/notes/
+/notes-*/
+/.ccache/
+/.toolchain/
+/.bootstrap/
 __pycache__/
 *.pyc
 .DS_Store

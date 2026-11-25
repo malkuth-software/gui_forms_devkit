@@ -1,0 +1,56 @@
+# The example app's project file (the devkit harness's project.py reads it): the
+# names the devkit's tools use for this app. build.py points them here
+# (HARNESS_PROJECT); the app's checkout is its own workspace, so .ci/, .sdk/,
+# .build/ and .ccache/ sit inside it, ignored by .gitignore.
+
+schema = 1
+
+[project]
+name = "example_app"
+repository = "malkuth-software/gui_forms_devkit"
+source_dir = "."
+# .build/native-<platform>/ holds the build tree.
+build_name = "example-app"
+# EXAMPLE_APP_LLVM_RUNTIME on macOS and Linux (harness/cmake/llvm22.cmake).
+env_prefix = "EXAMPLE_APP"
+
+[ci]
+artifact_prefix = "example-app-"
+native_workflow = ".github/workflows/ci.yml"
+native_job = "native"
+
+[toolchain]
+# The Windows CLANG64 toolchain GUI.Forms publishes and builds its SDK with.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+name_prefixes = []
+
+# consumer: building the app against the prebuilt SDK and starting it under a
+# virtual display on Ubuntu 24.04.
+[linux_packages.consumer]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth",
+]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "the example app against the prebuilt GUI.Forms SDK"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+
+# The devkit's bootstrap (sh bootstrap.sh --workspace DIR --project-file
+# DIR/harness.toml): the Windows toolchain, then build.py, which resolves and
+# fetches the SDK and restores the runtime itself. No notes: an app declares
+# them only when it has in-house ones.
+[bootstrap]
+restore = ["toolchain"]
+smoke = ["{python}", "build.py", "--jobs", "4"]

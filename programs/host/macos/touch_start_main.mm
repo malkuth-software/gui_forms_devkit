@@ -1,7 +1,7 @@
 // The touch start demonstrator on this host (owner, 2026-11-21;
 // demo/touch_start/touch_start.hpp): a panning surface of live tiles,
 // with --headless --capture and --check.
-#include "macos_host.hpp"
+#include "gui_forms/platform/macos_host.hpp"
 #include "touch_start.hpp"
 #include "touch_start_program.hpp"
 #include "program_options.hpp"

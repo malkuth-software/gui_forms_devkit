@@ -1,0 +1,23 @@
+# The example app's GUI.Forms pin: the major only, with a floor (the devkit's
+# harness/harness/resolve_gui_forms.py reads it; build.py runs it).
+#
+# A build takes the newest green GUI.Forms build within the major that is at
+# least `minimum`, and stays on it until `python3 build.py --resolve` moves it
+# (`--floor` builds against `minimum` itself). GUI.Forms makes no breaking
+# change within a major, so any such build has the API this app uses. Raise
+# `minimum` in the same commit that first uses newer API.
+[gui_forms]
+repository = "malkuth-software/gui_forms"
+major = 1
+minimum = "1.0.5"
+# "main": the newest build-<sha> pre-release carrying every platform's SDK;
+# "stable": the newest v<major>.* release.
+channel = "main"
+# The platforms whose SDK a candidate must carry (all present means green).
+platforms = ["linux-x64", "linux-arm64", "macos-arm64", "windows-x64"]
+
+# `python3 build.py check`: the devkit's static checks over src, tests and
+# reference. "consumer" holds an app to what a retained-mode GUI.Forms app
+# needs; "strict" adds the devkit's own house rules. Strict is opt-in.
+[checks]
+profile = "consumer"

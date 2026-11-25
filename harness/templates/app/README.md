@@ -25,22 +25,25 @@ gh repo clone {{harness_repository}} && sh template_harness/bootstrap.sh --works
 
 ## Build and test
 
-From the workspace root, on a build host with LLVM 22.1.8, CMake and Ninja
-(never on a machine that must not compile):
+On a build host with LLVM 22.1.8, CMake and Ninja (never on a machine that
+must not compile):
 
 ```sh
-python3 {{app}}/ci_build.py --jobs 4 --allow-network-inputs
-python3 {{app}}/ci_build.py --gui-forms-prefix "$(python3 template_harness/harness/lockstep.py prefix)"
+python3 {{app}}/build.py --jobs 4
+python3 {{app}}/build.py check
 python3 -B -m unittest discover -s {{app}} -p "test_*.py"
 ```
 
-`gui_forms.lock` pins the GUI.Forms source SDK; `fetch_sdk.py pin TAG` moves it.
+`build.py` builds against the prebuilt GUI.Forms SDK through the devkit's
+harness (`harness/harness/devkit_build.py`), compiling none of GUI.Forms;
+`devkit.toml` pins GUI.Forms by major with a floor, and `build.py --resolve`
+moves the build to the newest green GUI.Forms within it.
 
 | Path | What |
 |---|---|
 | `src/`, `tests/` | the app's form, its entry point, the form's test and the interaction checks |
 | `reference/` | the reference custom control agents copy (a copy of GUI.Forms `examples/link_page`) |
-| `CMakeLists.txt`, `ci_build.py`, `fetch_sdk.py`, `gui_forms.lock` | the build against the pinned GUI.Forms SDK |
+| `CMakeLists.txt`, `build.py`, `devkit.toml`, `harness.toml` | the build against the prebuilt GUI.Forms SDK, with the devkit's build guard; the pin; the project file the devkit's tools read |
 | `harness.lock` | the harness pin; the plugins load from the sibling `../template_harness/claude` at this pin |
 | `.github/workflows/ci.yml` | CI through the harness's reusable workflows at the same commit |
 | `CLAUDE.md`, `AGENTS.md`, `.claude/` | agent instructions, project agents and the FranSushi plugins |

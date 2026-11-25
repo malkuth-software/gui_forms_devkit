@@ -20,9 +20,12 @@ The variables:
   holds "locale" (GUI.Forms' CI sets it since the cache bootstrap: clang
   translates no message, so the locale changes no output);
 - the restored Windows toolchain first on PATH;
-- <PREFIX>_LLVM_RUNTIME, the C++ runtime under .build/toolchain/ when
+- HARNESS_ENV_PREFIX, the project's env_prefix, and <PREFIX>_LLVM_RUNTIME
+  and HARNESS_LLVM_RUNTIME, the C++ runtime under .build/toolchain/ when
   exactly one holds a runtime-manifest.json (the macOS runtime in the cache
-  archive, the Linux runtime in the runtime archive);
+  archive, the Linux runtime in the runtime archive): cmake/llvm22.cmake
+  reads <HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else HARNESS_LLVM_RUNTIME, so a
+  shell that loaded the record configures without further settings;
 - the project's [bootstrap] environment, then its [bootstrap.<platform>]
   environment, {workspace} becoming the workspace root;
 - each NAME=VALUE setting given (restore_local.py env --set; bootstrap.py
@@ -135,9 +138,11 @@ def build_environment(product: project.Project, platform: str, settings: list[tu
     if platform == 'windows-x64' and record.is_file():
         directories: list[str] = record.read_text(encoding='utf-8').splitlines()
         values['PATH'] = os.pathsep.join(directories) + os.pathsep + PATH_PLACEHOLDER
+    values['HARNESS_ENV_PREFIX'] = product.env_prefix
     runtime: Path | None = runtime_prefix(workspace)
     if runtime is not None:
         values[product.variable('LLVM_RUNTIME')] = runtime.as_posix()
+        values['HARNESS_LLVM_RUNTIME'] = runtime.as_posix()
     tables: list[tuple[tuple[str, str], ...]] = []
     if product.bootstrap is not None:
         tables.append(product.bootstrap.environment)

@@ -1,0 +1,9 @@
+/* The claim form's sheet over the windows-professional base: the roles its
+   `classes` name. Text colours are colour roles, so forced high contrast
+   can replace them. */
+:root {
+  color-roles: claim-ink-on-paper from ink-on-paper;
+  claim-ink-on-paper: #1d3557 on #ffffff;
+}
+.section-heading { font-weight: 600; }
+.status { color: role(claim-ink-on-paper); font-size: 12px; }

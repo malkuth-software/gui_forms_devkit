@@ -1,0 +1,24 @@
+# NSIS for the Windows installers (programs/tools/package_programs.py runs
+# makensis), at a pinned version through Chocolatey: the nsis package
+# carries the installer's SHA-256 and choco refuses a download that does not
+# match it (checksums are enforced by default; --require-checksums makes a
+# package without one fail too). Then makensis is put on PATH and its
+# version checked.
+name: windows nsis
+description: Install the pinned NSIS and put makensis on PATH
+runs:
+  using: composite
+  steps:
+    - name: Install NSIS
+      shell: pwsh
+      env:
+        NSIS_VERSION: '3.10'
+      run: |
+        choco install nsis --version=$env:NSIS_VERSION --require-checksums --no-progress -y
+        if ($LASTEXITCODE -ne 0) { throw "choco install nsis $env:NSIS_VERSION failed ($LASTEXITCODE)" }
+        $directory = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+        $makensis = Join-Path $directory 'makensis.exe'
+        if (-not (Test-Path $makensis)) { throw "makensis.exe is not in $directory" }
+        $reported = (& $makensis /VERSION).Trim()
+        if ($reported -ne "v$env:NSIS_VERSION") { throw "makensis reports $reported, pinned v$env:NSIS_VERSION" }
+        Add-Content -Path $env:GITHUB_PATH -Value $directory

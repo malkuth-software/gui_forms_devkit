@@ -1,5 +1,5 @@
 #include "connected_controls_lab.hpp"
-#include "macos_host.hpp"
+#include "gui_forms/platform/macos_host.hpp"
 #include "program_options.hpp"
 
 #include <optional>

@@ -1,0 +1,67 @@
+# The Windows own runtime a devkit build links (GUI.Forms ships Windows on
+# x86_64-pc-windows-msvc with STXlib's runtime; owner, 2026-11-24), at the
+# resolved GUI.Forms revision. resolve_gui_forms.py fetch has already
+# extracted the build's gui-forms-runtime-windows-x64 asset (.ci/own-runtime)
+# when it publishes one; GUI.Forms' own_runtime.py, from a sparse checkout at
+# the same revision, reuses it when its stamp matches and builds it otherwise
+# (the fallback), then sets the three variables its toolchain reads.
+#
+# Output `toolchain`: GUI.Forms' cmake/llvm22-windows-msvc.cmake at that
+# revision, the CMAKE_TOOLCHAIN_FILE a consumer builds with on Windows.
+# Output `cmake-options`: the -D settings that toolchain needs beside it,
+# GUI_FORMS_MSVC_RUNTIME=OWN and the three locations, as GUI.Forms' own
+# configure passes them (tools/toolkit_configure.py). The toolchain reads
+# them as cache settings, not from the environment, and without OWN it takes
+# its Microsoft mode (-D_DLL, --dependent-lib=msvcrt, /DEFAULTLIB:msvcprt.lib)
+# while linking the own runtime's libc++: every executable then fails on
+# duplicate std::exception and std::bad_alloc symbols.
+name: windows own runtime
+description: Restore or build GUI.Forms' Windows own runtime and name its toolchain file
+inputs:
+  revision:
+    description: the resolved GUI.Forms commit (.ci/gui_forms-resolved.json)
+    required: true
+outputs:
+  toolchain:
+    description: the Windows toolchain file of that revision
+    value: ${{ steps.runtime.outputs.toolchain }}
+  cmake-options:
+    description: the configure's -D settings for that toolchain's own-runtime mode
+    value: ${{ steps.options.outputs.cmake-options }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        repository: malkuth-software/gui_forms
+        ref: ${{ inputs.revision }}
+        path: .ci/gui_forms-tools
+        sparse-checkout: |
+          tools
+          cmake
+          stx.lock
+        sparse-checkout-cone-mode: false
+    - name: Restore or build the own runtime
+      id: runtime
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        python -B .ci/gui_forms-tools/tools/own_runtime.py build --out .ci/own-runtime --jobs 4 --github-env
+        toolchain="$GITHUB_WORKSPACE/.ci/gui_forms-tools/cmake/llvm22-windows-msvc.cmake"
+        if command -v cygpath >/dev/null; then toolchain="$(cygpath -m "$toolchain")"; fi
+        echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
+    # own_runtime.py's settings reach $GITHUB_ENV, so this later step reads them.
+    - name: Name the own runtime's configure options
+      id: options
+      shell: bash
+      run: |
+        options="-DGUI_FORMS_MSVC_RUNTIME=OWN"
+        for name in GUI_FORMS_OWN_RUNTIME_SOURCE GUI_FORMS_OWN_RUNTIME_PREFIX GUI_FORMS_LIBCXX_PREFIX; do
+          if [ -z "${!name:-}" ]; then
+            echo "own_runtime.py set no $name; the toolchain cannot find the own runtime" >&2
+            exit 1
+          fi
+          options="$options -D$name=\"${!name}\""
+        done
+        echo "cmake-options=$options" >> "$GITHUB_OUTPUT"

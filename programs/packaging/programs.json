@@ -1,16 +1,17 @@
 {
   "schema": 1,
   "notes": [
-    "Program manifest consumed by tools/package_programs.py, tools/smoke_package.py and tools/publish_tested_release.py.",
+    "Program manifest consumed by programs/tools/package_programs.py and programs/tools/smoke_package.py.",
     "Each program lists, per platform, the CMake target and the path pattern of what the build directory produces.",
     "A platform entry marked planned=true names a target another workstream still has to add; packaging logs it as skipped when the build directory lacks it and never fails on it.",
-    "Font notices: a package carries no face files, since every program reads its faces from the font pack compiled into GUI.Forms; it carries their licences and the attribution in fonts/ (macOS: Contents/Resources/fonts). notices mirror GUI_FORMS_PROGRAM_FONT_NOTICES in CMakeLists.txt; fallback_notices are the Noto licences (GUI_FORMS_FALLBACK_FONT_NOTICES), carried when a program's fallback_fonts is true, which must match the build's GUI_FORMS_INSTALL_FALLBACK_FONTS (whether its pack holds the Noto faces).",
+    "Font notices: a package carries no face files, since every program reads its faces from the font pack compiled into GUI.Forms; it carries their licences and the attribution in fonts/ (macOS: Contents/Resources/fonts). notices are read from the prebuilt SDK's share/GUIForms/fonts ($GUI_FORMS_FONTS) and mirror GUI_FORMS_PROGRAM_FONT_NOTICES in programs/CMakeLists.txt; fallback_notices are the Noto licences (GUI_FORMS_FALLBACK_FONT_NOTICES), carried when a program's fallback_fonts is true, which must match the build's GUI_FORMS_INSTALL_FALLBACK_FONTS (whether its pack holds the Noto faces).",
+    "launch_arguments (optional): the plain --flags an installed launcher passes (the Windows Start menu shortcut, the Linux launcher behind the menu entry), for a program whose bare start is a developer harness (Explore: --product-only). A macOS bundle opened from the Finder takes no arguments.",
     "Identifiers: macOS pkg identifier is <vendor.bundle_prefix>.<id>; Debian package is <vendor.deb_prefix>-<id>; Windows uninstall key is <vendor.windows_uninstall_prefix><id> under HKCU."
   ],
   "vendor": {
     "name": "Rainstar",
     "maintainer": "Joshuah Rainstar <noreply@rainstar.invalid>",
-    "repository": "malkuth-software/gui_forms",
+    "repository": "malkuth-software/gui_forms_devkit",
     "bundle_prefix": "org.rainstar.guiforms",
     "deb_prefix": "rainstar-guiforms",
     "windows_install_root": "$LOCALAPPDATA\\Rainstar\\GUI.Forms",
@@ -19,7 +20,7 @@
     "artifact_prefix": "gui-forms"
   },
   "fonts": {
-    "source": "assets/fonts",
+    "source": "$GUI_FORMS_FONTS",
     "notices": [
       "ATTRIBUTION.md",
       "LICENSE-PortsmouthRapids.txt",
@@ -93,6 +94,9 @@
           "--product-only"
         ]
       },
+      "launch_arguments": [
+        "--product-only"
+      ],
       "platforms": {
         "macos-arm64": {
           "target": "gui_forms_file_manager_demoboard",

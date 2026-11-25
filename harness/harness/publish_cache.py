@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Publish one tested platform without waiting for other matrix jobs.
+
+    python3 harness/harness/publish_cache.py --platform P [--tag TAG] [--inputs FILE] [--asset FILE ...]
+            [--no-toolchain]
+
+--tag names the pre-release (default build-<sha>; the devkit's lockstep
+publishes into gf-<GUI.Forms sha>, made on the devkit commit); --inputs is
+the identity record (default .ci/inputs.json: platform and revision, which
+must be GITHUB_SHA); each --asset is one more archive published after the
+cache (the devkit's program and Pocket Reference packages); --no-toolchain
+leaves the Windows toolchain out (the devkit builds with the one GUI.Forms
+publishes and republishes none).
+
+Into the build-<sha> pre-release: the Windows toolchain, the runtime archive
+(ci.runtime_asset_prefix), the compiler cache and the installed SDK
+(ci.sdk_asset_prefix), the optional ones when the job made them.
+"""
+from __future__ import annotations
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+from typing import Any
+
+from ci_reuse import api, file_digest
+import project
+import windows_toolchain
+
+
+def ensure_release(repository: str, revision: str, tag: str = '') -> str:
+    tag = tag or 'build-' + revision
+    command: list[str] = ['gh', 'release', 'view', tag, '--repo', repository]
+    exists: subprocess.CompletedProcess[str] = subprocess.run(command, capture_output=True, text=True)
+    if exists.returncode != 0:
+        notes: str = ('Platform archives appear independently after their native validation passes. '
+                      'An absent platform is not yet published. Source: ' + revision + '. '
+                      'Each archive contains its producer and validation provenance. '
+                      'These are build inputs, not an application release.')
+        created: subprocess.CompletedProcess[str] = subprocess.run(
+            ['gh', 'release', 'create', tag, '--repo', repository, '--target', revision,
+             '--prerelease', '--title', 'Compiler cache ' + revision[:7], '--notes', notes],
+            capture_output=True, text=True)
+        if created.returncode != 0:
+            # Another platform may have won the creation race. Only an existing
+            # release with the exact source tag permits continuing.
+            subprocess.run(command, check=True)
+    reference: dict[str, Any] = api('repos/' + repository + '/git/ref/tags/' + tag)
+    if reference['object']['type'] != 'commit' or reference['object']['sha'] != revision:
+        raise ValueError('Build release tag does not name the tested source commit')
+    return tag
+
+
+def publish(repository: str, revision: str, archive: Path, tag: str = '') -> None:
+    if not archive.is_file() or archive.stat().st_size == 0:
+        raise ValueError('Missing platform archive: ' + archive.name)
+    tag = ensure_release(repository, revision, tag)
+    uploaded: subprocess.CompletedProcess[str] = subprocess.run(
+        ['gh', 'release', 'upload', tag, str(archive), '--repo', repository], capture_output=True, text=True)
+    if uploaded.returncode == 0:
+        return
+    # Reruns never silently replace a published asset. Accept only equal bytes.
+    with tempfile.TemporaryDirectory() as directory:
+        subprocess.run(['gh', 'release', 'download', tag, '--repo', repository,
+                        '--pattern', archive.name, '--dir', directory], check=True)
+        existing: Path = Path(directory) / archive.name
+        if file_digest(existing) != file_digest(archive):
+            raise ValueError('Refusing to replace a published archive with different bytes')
+
+
+def main() -> None:
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--platform', required=True)
+    parser.add_argument('--tag', default='')
+    parser.add_argument('--inputs', type=Path, default=Path('.ci/inputs.json'))
+    parser.add_argument('--asset', type=Path, action='append', default=[])
+    parser.add_argument('--no-toolchain', action='store_true')
+    args: argparse.Namespace = parser.parse_args()
+    identity: dict[str, Any] = json.loads(args.inputs.read_text())
+    if identity['platform'] != args.platform or identity['revision'] != os.environ['GITHUB_SHA']:
+        raise ValueError('Publication identity mismatch')
+    archives: list[Path] = []
+    if args.platform == windows_toolchain.PLATFORM and not args.no_toolchain:
+        # Publish the toolchain first: a consumer never sees a Windows cache
+        # without the exact compiler tree that filled it.
+        archives.extend(windows_toolchain.publication_files(Path('.')))
+    product: project.Project = project.current()
+    # The runtime the cache's objects were compiled against comes before the cache, and the
+    # installed SDK after it; each only when the product names it and this job made it
+    # (a job that reused a validation compiled nothing and has neither).
+    runtime: str | None = product.runtime_asset(args.platform)
+    if runtime is not None and Path(runtime).is_file():
+        archives.append(Path(runtime))
+    archives.append(Path(product.cache_asset(args.platform)))
+    sdk: str | None = product.sdk_asset(args.platform)
+    if sdk is not None and Path(sdk).is_file():
+        archives.append(Path(sdk))
+    archives.extend(args.asset)
+    archive: Path
+    for archive in archives:
+        publish(os.environ['GITHUB_REPOSITORY'], identity['revision'], archive, args.tag)
+
+
+if __name__ == '__main__':
+    main()

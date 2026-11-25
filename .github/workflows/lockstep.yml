@@ -1,0 +1,169 @@
+# The devkit in lockstep with GUI.Forms (DEVKIT_DESIGN.md section 2). Each
+# GUI.Forms main advance, once every platform has published, sends
+# repository_dispatch gui-forms-advanced {sha, version} (its native.yml
+# devkit-dispatch job). This run builds everything against exactly that
+# build with the devkit harness, runs the cache proof, and on success
+# publishes the devkit's packages and its own compiler cache into the
+# pre-release gf-<GUI.Forms sha>, made on the devkit commit. On failure
+# nothing is published and one issue names the GUI.Forms commit.
+#
+# Manually: Run workflow, with a GUI.Forms commit or empty for its newest
+# green build in devkit.toml's major.
+name: lockstep
+on:
+  repository_dispatch:
+    types: [gui-forms-advanced]
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: the GUI.Forms commit (empty for the newest green build in the major)
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: devkit-lockstep
+  cancel-in-progress: false
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REQUESTED: ${{ github.event.client_payload.sha || inputs.revision }}
+    outputs:
+      revision: ${{ steps.pin.outputs.revision }}
+      version: ${{ steps.pin.outputs.version }}
+      devkit_version: ${{ steps.pin.outputs.devkit_version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Resolve the GUI.Forms build
+        id: pin
+        run: |
+          if [ -n "$REQUESTED" ]; then
+            case "$REQUESTED" in *[!0-9a-f]*) echo "::error::not a commit: $REQUESTED"; exit 1;; esac
+            python -B harness/harness/resolve_gui_forms.py resolve --revision "$REQUESTED"
+          else
+            python -B harness/harness/resolve_gui_forms.py resolve
+          fi
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re
+          record = json.load(open('.ci/gui_forms-resolved.json'))
+          print('revision=' + record['revision'])
+          print('version=' + record['version'])
+          text = open('CMakeLists.txt').read()
+          print('devkit_version=' + re.search(r'project\(gui_forms_devkit VERSION ([0-9.]+)', text).group(1))
+          PY
+
+  harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Harness and packaging tests
+        run: |
+          python -B -m unittest discover -s harness/harness -p "test_*.py"
+          python -B -m unittest discover -s programs/tools -p "test_*.py"
+      - name: Views and programs checks (strict profile)
+        run: python -B harness/harness/run_checks.py --profile strict views programs
+
+  build:
+    needs: pin
+    uses: ./.github/workflows/build.yml
+    with:
+      revision: ${{ needs.pin.outputs.revision }}
+      package: true
+      version: ${{ needs.pin.outputs.devkit_version }}
+
+  cache-proof:
+    needs: pin
+    uses: ./.github/workflows/cache-proof.yml
+    with:
+      revision: ${{ needs.pin.outputs.revision }}
+
+  publish:
+    needs: [pin, harness, build, cache-proof]
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        platform: [macos-arm64, windows-x64, linux-x64, linux-arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HARNESS_PROJECT: ${{ github.workspace }}/harness/projects/gui_forms_devkit.toml
+      HARNESS_WORKSPACE: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: devkit-${{ matrix.platform }}
+      # The cache first, then each package and its receipt; a rerun accepts
+      # equal bytes and refuses changed ones (publish_cache.py).
+      - name: Publish into gf-${{ needs.pin.outputs.revision }}
+        run: |
+          assets=""
+          for file in dist/*; do
+            case "$(basename "$file")" in SHA256SUMS.txt) continue;; esac
+            [ -f "$file" ] && assets="$assets --asset $file"
+          done
+          python -B harness/harness/publish_cache.py --platform ${{ matrix.platform }} \
+            --tag "gf-${{ needs.pin.outputs.revision }}" --inputs .ci/inputs.json --no-toolchain $assets
+
+  prune:
+    needs: publish
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HARNESS_PROJECT: ${{ github.workspace }}/harness/projects/gui_forms_devkit.toml
+      HARNESS_WORKSPACE: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Keep the five newest lockstep releases and the pinned
+        run: python -B harness/harness/prune_cache_releases.py --tag-prefix gf- --apply
+
+  report:
+    needs: [pin, harness, build, cache-proof, publish]
+    if: failure()
+    permissions:
+      issues: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Open one issue for the break
+        run: |
+          revision="${{ needs.pin.outputs.revision || github.event.client_payload.sha || inputs.revision }}"
+          title="Lockstep red at GUI.Forms ${revision:0:12}"
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number \
+              --jq '.[0].number' | grep -q .; then
+            echo "an issue for $revision is already open"
+            exit 0
+          fi
+          body="The devkit lockstep failed against GUI.Forms ${revision} (version ${{ needs.pin.outputs.version }}).
+
+          Jobs: pin ${{ needs.pin.result }}, harness ${{ needs.harness.result }}, build ${{ needs.build.result }}, cache proof ${{ needs.cache-proof.result }}, publish ${{ needs.publish.result }}.
+
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+          Nothing was published. A GUI.Forms checkpoint does not merge while the devkit is red at the previous one."
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"

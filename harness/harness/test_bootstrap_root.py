@@ -94,9 +94,8 @@ class RootLayoutBootstrapTests(unittest.TestCase):
         self.assertEqual(git(self.workspace, 'rev-parse', '--show-toplevel'), self.workspace.as_posix())
         self.assertTrue((self.workspace / 'product.txt').is_file())
         self.assertFalse((self.workspace / '.' / '.git').is_file())
-        # The notes and their worktree sit inside the product's checkout.
-        self.assertEqual(git(self.workspace / 'notes', 'branch', '--show-current'), 'main')
-        self.assertEqual(git(self.workspace / 'notes-gui_forms', 'branch', '--show-current'), 'gui_forms')
+        # A consumer's bootstrap clones no notes into the checkout.
+        self.assertFalse((self.workspace / 'notes').exists())
         smoke: list[str] = json.loads((self.workspace / 'smoke.json').read_text(encoding='utf-8'))
         self.assertEqual(smoke[0], str(self.workspace))
 
@@ -109,10 +108,12 @@ class RootLayoutBootstrapTests(unittest.TestCase):
                 warning.append(line)
         self.assertEqual(len(warning), 1, output)
         entry: str
-        for entry in ('template_harness/', 'notes/', 'notes-gui_forms/', '.build/', '.ccache/', '.ci/', '.toolchain/',
-                      '.bootstrap/'):
+        for entry in ('template_harness/', '.build/', '.ccache/', '.ci/', '.toolchain/', '.bootstrap/'):
             self.assertIn(entry, warning[0])
+        # The in-house directories only matter with --in-house.
         self.assertNotIn('projects/', warning[0])
+        self.assertNotIn('notes/', warning[0])
+        self.assertNotIn('notes-gui_forms/', warning[0])
 
     def test_an_ignoring_checkout_gets_its_harness_inside_and_no_warning(self) -> None:
         commit_file(self.product_seed, '.gitignore', IGNORED)

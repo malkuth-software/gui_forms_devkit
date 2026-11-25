@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A registry browser: a tree of keys beside the values of the chosen key.
+     The keys and values are fixture data (registry_browser.fixture). -->
+<form xmlns="urn:gui-forms:form:1" id="registry.window"
+    text="Registry browser"
+    client-size="720 440">
+  <panel id="registry.root">
+    <label id="registry.path"
+        text="Computer\HKEY_CURRENT_USER\Software\Contoso\Ledger"
+        classes="path"
+        bounds="12 8 696 24"/>
+    <tree-view id="registry.keys"
+        accessible-name="Keys"
+        bounds="12 40 240 352"
+        tab-index="0"
+        on-double-click="open_key"/>
+    <list-view id="registry.values"
+        accessible-name="Values"
+        view="details"
+        full-row-select="true"
+        bounds="260 40 448 352"
+        tab-index="1"
+        on-double-click="edit_value"/>
+    <button id="registry.refresh" text="Refresh" bounds="524 400 88 30" tab-index="2">
+      <bind property="command" to="refresh"/>
+    </button>
+    <button id="registry.close" text="Close" bounds="620 400 88 30" tab-index="3">
+      <bind property="command" to="close"/>
+    </button>
+  </panel>
+</form>

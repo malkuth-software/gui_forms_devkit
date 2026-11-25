@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A settings dialog: grouped options, a number and OK and Cancel, its
+     values from settings_dialog.fixture. -->
+<form xmlns="urn:gui-forms:form:1" id="settings.window"
+    text="Options"
+    client-size="420 330"
+    accept-button="settings.ok"
+    cancel-button="settings.cancel">
+  <panel id="settings.root">
+    <group-box id="settings.saving" text="Saving" bounds="12 12 396 120">
+      <check-box id="settings.autosave" text="Save automatically" bounds="16 28 220 26" tab-index="0">
+        <bind property="checked" to="autosave"/>
+      </check-box>
+      <label id="settings.interval.caption" text="Every (minutes)" bounds="36 64 140 24"/>
+      <numeric-up-down id="settings.interval"
+          accessible-name="Save interval in minutes"
+          minimum="1"
+          maximum="120"
+          bounds="180 60 90 28"
+          tab-index="1">
+        <bind property="value" to="interval"/>
+      </numeric-up-down>
+    </group-box>
+
+    <group-box id="settings.startup" text="On start" bounds="12 144 396 128">
+      <radio-button id="settings.startup.blank" text="Open a blank document" bounds="16 28 300 26"
+          tab-index="2" on-checked-changed="startup_chosen"/>
+      <radio-button id="settings.startup.last" text="Reopen the last documents" bounds="16 58 300 26"
+          checked="true" tab-index="3" on-checked-changed="startup_chosen"/>
+      <radio-button id="settings.startup.picker" text="Show the start page" bounds="16 88 300 26"
+          tab-index="4" on-checked-changed="startup_chosen"/>
+    </group-box>
+
+    <button id="settings.ok" text="OK" bounds="224 286 88 32" tab-index="5" classes="default-action">
+      <bind property="command" to="accept"/>
+    </button>
+    <button id="settings.cancel" text="Cancel" bounds="320 286 88 32" tab-index="6">
+      <bind property="command" to="dismiss"/>
+    </button>
+  </panel>
+</form>
