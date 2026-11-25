@@ -22,6 +22,8 @@ since gui_forms still builds and installs the model.
 | `gui_forms_file_manager_demoboard_tests`, `_public_policy` | `file_manager_demoboard/` | `gui_forms_devkit_file_manager_demoboard` |
 | `gui_forms_<program>_font_policy` | `cmake/check_gallery_fonts.cmake` | the program bundles (macOS) |
 | `gui_forms_gallery_headless_capture_tests` | `gallery_headless_capture_tests.cpp` | `GUIForms::GalleryModel`, `GUIForms::Application` |
-| with `GUI_FORMS_SOURCE_DIR`: `gui_forms_layered_material_raster_tests`, `gui_forms_compositor_lab_tests`, `gui_forms_custom_chrome_lab_tests`, `gui_forms_macos_live_resize_probe` | | GUI.Forms' private sources |
 
-`t5_gate_record.py` records the compositor lab's T5 gate runs.
+Suites that read GUI.Forms' private sources (the layered-material raster,
+compositor and custom-chrome lab suites, the macOS live-resize probe) and the
+SDK's installed-consumer proof stay in gui_forms_tests: the devkit is a
+consumer and uses the public API only.
