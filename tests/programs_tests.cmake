@@ -58,7 +58,7 @@ endif()
 # The demonstrator views: Code Zoom (its C++ language, zoom, bench report
 # and sheet), the data workbench (find panel, sort, column chooser, layouts,
 # summaries, dashboard) and Touch Start (its touch input and tiles).
-foreach(_gf_view IN ITEMS code_zoom data_workbench)
+foreach(_gf_view IN ITEMS code_zoom data_workbench touch_start)
     if(TARGET gui_forms_devkit_view_${_gf_view})
         gui_forms_devkit_suite(gui_forms_${_gf_view}_tests ${_gf_view}_tests.cpp gui_forms_devkit_view_${_gf_view})
     endif()
