@@ -21,7 +21,7 @@ inputs:
 outputs:
   identity:
     description: the compiler and runner image identity, for cache keys
-    value: ${{ steps.compiler.outputs.identity }}
+    value: ${{ steps.compiler.outputs.identity || steps.compiler-windows.outputs.identity }}
 runs:
   using: composite
   steps:
@@ -93,9 +93,17 @@ runs:
       with:
         path: ${{ runner.temp }}/apt-archives
         key: ${{ steps.linux-packages.outputs.cache-primary-key }}
+    # In the build's own shell: on Windows that is MSYS2's CLANG64 (the
+    # restored toolchain), since Git's bash finds the runner image's LLVM first.
     - name: Identify the compiler
       id: compiler
+      if: runner.os != 'Windows'
       shell: bash
+      run: python harness/harness/compiler_identity.py
+    - name: Identify the compiler (Windows, CLANG64)
+      id: compiler-windows
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
       run: python harness/harness/compiler_identity.py
     - name: Configure the compiler cache
       shell: bash

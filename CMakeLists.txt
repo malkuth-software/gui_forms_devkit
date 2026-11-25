@@ -38,6 +38,15 @@ find_package(GUIForms ${GUI_FORMS_DEVKIT_MINIMUM} CONFIG REQUIRED
 if(NOT TARGET stxlib::algorithms)
     find_package(stxlib CONFIG REQUIRED)
 endif()
+# The installed Lab and DemoControls (GUI.Forms 1.0.5) name no link
+# dependency on Controls, so a static link that lists Controls first leaves
+# their references (VScrollBar in CorrespondenceView) unresolved on GNU ld.
+# Their dependency is declared here until GUI.Forms exports it.
+foreach(gui_forms_devkit_lab_target GUIForms::Lab GUIForms::DemoControls)
+    if(TARGET ${gui_forms_devkit_lab_target})
+        set_property(TARGET ${gui_forms_devkit_lab_target} APPEND PROPERTY INTERFACE_LINK_LIBRARIES GUIForms::Controls)
+    endif()
+endforeach()
 
 # What the resolver recorded, for every artifact's manifest.
 set(GUI_FORMS_DEVKIT_RESOLVED "${GUI_FORMS_DEVKIT_WORKSPACE}/.ci/gui_forms-resolved.json")
