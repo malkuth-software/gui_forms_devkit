@@ -85,6 +85,25 @@ jobs:
         if: runner.os == 'Windows'
         with:
           revision: ${{ steps.resolved.outputs.revision }}
+      # Pocket Reference's pages come from GUI.Forms' reference docs
+      # (docs/api, manifests/controls.json) of exactly the resolved build. The
+      # SDK does not install them yet, so they come from the public
+      # repository at the resolved revision, a sparse checkout under .sdk/;
+      # once the SDK ships share/GUIForms/docs/api this step skips itself and
+      # the pack is made from the SDK alone.
+      - name: Check out GUI.Forms' reference docs at the resolved revision
+        if: hashFiles('.sdk/gui-forms-sdk/share/GUIForms/docs/api/**') == ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: malkuth-software/gui_forms
+          ref: ${{ steps.resolved.outputs.revision }}
+          path: .sdk/gui-forms-docs
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /CMakeLists.txt
+            /docs/api/
+            /manifests/controls.json
       - name: Restore the devkit's newest cache
         run: python -B harness/harness/devkit_cache.py restore --workspace . --platform ${{ matrix.platform }}
       # The build guard runs at the end of the configure and before the first
@@ -92,9 +111,12 @@ jobs:
       # would rebuild GUI.Forms or miss the cache stops here, saying why.
       - name: Configure
         run: |
+          docs=""
+          if [ -d .sdk/gui-forms-docs/docs/api ]; then docs="-DPOCKET_REFERENCE_DOCS:PATH=.sdk/gui-forms-docs"; fi
           cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="${{ steps.own-runtime.outputs.toolchain || 'harness/harness/cmake/llvm22.cmake' }}" \
-            ${{ steps.own-runtime.outputs.cmake-options }}
+            ${{ steps.own-runtime.outputs.cmake-options }} \
+            $docs -DPOCKET_REFERENCE_COMMIT=${{ steps.resolved.outputs.revision }}
       - name: Build
         run: |
           ccache --zero-stats

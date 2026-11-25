@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Pocket Reference: GUI.Forms' API reference as a program. Its pages are
-# generated from a GUI.Forms checkout's docs (POCKET_REFERENCE_DOCS), each
+# generated from GUI.Forms' reference docs (POCKET_REFERENCE_DOCS: a GUI.Forms
+# checkout, or an installed SDK that ships them under share/GUIForms), each
 # control page's figure is that control's stock specimen rendered through
 # the SDK, and the whole is coded into reference.pack with the coder in
 # pack_coder/ (copied from Pocket Library).
@@ -32,7 +33,16 @@ else()
   set(CMAKE_NO_SYSTEM_FROM_IMPORTED ON)
   find_package(GUIForms 1.0 CONFIG REQUIRED COMPONENTS Application)
   set_property(TARGET GUIForms::Application PROPERTY IMPORTED_NO_SYSTEM TRUE)
-  set(pocket_reference_default_docs "")
+  # The SDK's own reference docs, when it installs them
+  # (share/GUIForms/docs/api beside share/GUIForms/ledgers/controls.json);
+  # otherwise POCKET_REFERENCE_DOCS names a checkout of the same build.
+  get_filename_component(pocket_reference_sdk_prefix "${GUIForms_DIR}/../../.." ABSOLUTE)
+  if(EXISTS "${pocket_reference_sdk_prefix}/share/GUIForms/docs/api"
+     AND EXISTS "${pocket_reference_sdk_prefix}/share/GUIForms/ledgers/controls.json")
+    set(pocket_reference_default_docs "${pocket_reference_sdk_prefix}")
+  else()
+    set(pocket_reference_default_docs "")
+  endif()
 endif()
 if(NOT TARGET stxlib::algorithms)
   find_package(stxlib CONFIG REQUIRED)
@@ -40,7 +50,9 @@ endif()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 set(POCKET_REFERENCE_DOCS "${pocket_reference_default_docs}" CACHE PATH
-    "The GUI.Forms checkout whose docs/api the pack is made from (the toolkit source by default)")
+    "The GUI.Forms checkout or SDK prefix whose reference docs the pack is made from (the toolkit source, or the SDK when it ships them, by default)")
+set(POCKET_REFERENCE_COMMIT "" CACHE STRING
+    "The GUI.Forms commit the program is built against, which the pages name (the docs checkout's HEAD by default)")
 
 add_library(pocket_reference_coder STATIC pack_coder/lz_coder.cpp pack_coder/sha256.cpp)
 target_compile_features(pocket_reference_coder PUBLIC cxx_std_20)
@@ -99,13 +111,34 @@ if(POCKET_REFERENCE_DOCS)
   set(pocket_reference_figures "${CMAKE_CURRENT_BINARY_DIR}/figures")
   set(pocket_reference_figures_list "${pocket_reference_figures}/figures.txt")
   set(pocket_reference_pack "${CMAKE_CURRENT_BINARY_DIR}/reference.pack")
-  file(GLOB pocket_reference_rst CONFIGURE_DEPENDS "${POCKET_REFERENCE_DOCS}/docs/api/*.rst"
-       "${POCKET_REFERENCE_DOCS}/docs/api/generated/*.rst")
+  if(EXISTS "${POCKET_REFERENCE_DOCS}/manifests/controls.json")
+    set(pocket_reference_api "${POCKET_REFERENCE_DOCS}/docs/api")
+    set(pocket_reference_registry "${POCKET_REFERENCE_DOCS}/manifests/controls.json")
+  else()
+    set(pocket_reference_api "${POCKET_REFERENCE_DOCS}/share/GUIForms/docs/api")
+    set(pocket_reference_registry "${POCKET_REFERENCE_DOCS}/share/GUIForms/ledgers/controls.json")
+  endif()
+  if(NOT EXISTS "${pocket_reference_registry}" OR NOT IS_DIRECTORY "${pocket_reference_api}")
+    message(FATAL_ERROR "POCKET_REFERENCE_DOCS (${POCKET_REFERENCE_DOCS}) is neither a GUI.Forms checkout "
+                        "nor an SDK prefix with share/GUIForms/docs/api")
+  endif()
+  # The pages name the GUI.Forms build the program links: the SDK's version
+  # and, when given, the commit; make_reference_text.py refuses docs of
+  # another build.
+  set(pocket_reference_build_arguments "")
+  if(GUIForms_VERSION)
+    list(APPEND pocket_reference_build_arguments --version "${GUIForms_VERSION}")
+  endif()
+  if(POCKET_REFERENCE_COMMIT)
+    list(APPEND pocket_reference_build_arguments --commit "${POCKET_REFERENCE_COMMIT}")
+  endif()
+  file(GLOB pocket_reference_rst CONFIGURE_DEPENDS "${pocket_reference_api}/*.rst"
+       "${pocket_reference_api}/generated/*.rst")
   add_custom_command(OUTPUT "${pocket_reference_text}"
     COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tools/make_reference_text.py"
-            --gui-forms "${POCKET_REFERENCE_DOCS}" --out "${pocket_reference_text}"
+            --gui-forms "${POCKET_REFERENCE_DOCS}" ${pocket_reference_build_arguments} --out "${pocket_reference_text}"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/make_reference_text.py" ${pocket_reference_rst}
-            "${POCKET_REFERENCE_DOCS}/manifests/controls.json"
+            "${pocket_reference_registry}"
     COMMENT "Pocket Reference: writing the page text"
     VERBATIM)
   add_custom_command(OUTPUT "${pocket_reference_figures_list}"

@@ -40,6 +40,13 @@ cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=gui_forms/cmake/llvm22.cmake
 cmake --build build --target pocket-reference
 ```
 
+The pages name the GUI.Forms build the program links. With an SDK, the
+reference docs come from the SDK itself when it ships them
+(`share/GUIForms/docs/api` and `share/GUIForms/ledgers/controls.json`), and
+otherwise from `POCKET_REFERENCE_DOCS`, a checkout of the same GUI.Forms
+build: its version must match the SDK's, and `-DPOCKET_REFERENCE_COMMIT=<sha>`
+makes the commit checked too. Docs of another build are refused.
+
 The pin is in `third_party/gui-forms.lock.json`. `tools/package.py` makes the
 download for the host it runs on.
 
