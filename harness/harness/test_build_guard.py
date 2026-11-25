@@ -37,6 +37,10 @@ class Workspace:
         self.write(self.root / guard.RESOLVED_RECORD, {'revision': REVISION})
         self.build: Path = self.root / 'build'
         self.build.mkdir()
+        runtime: Path = self.root / guard.RUNTIME_DIRECTORY / 'llvm-22.1.8-linux-glibc-x86_64'
+        runtime.mkdir(parents=True)
+        (runtime / guard.RUNTIME_MANIFEST).write_text('{}', encoding='utf-8')
+        self.runtime: Path = runtime
 
     @staticmethod
     def write(path: Path, value: dict[str, Any]) -> None:
@@ -190,6 +194,20 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(record['objects']['views/v.o']['inputs'][0], 'views/v.hpp')
         self.assertEqual(record['build_dir'], 'build')
 
+    def test_a_runtime_to_build_is_a_warning_not_a_stop(self) -> None:
+        shutil.rmtree(self.workspace.runtime)
+        findings: list[guard.Finding] = guard.check(self.workspace.inputs())
+        self.assertEqual([finding.kind for finding in findings], ['runtime'])
+        self.assertFalse(findings[0].stops)
+
+    def test_an_unverified_runtime_does_not_count(self) -> None:
+        self.workspace.runtime.rename(self.workspace.runtime.with_name(self.workspace.runtime.name + '.unverified'))
+        self.assertEqual(self.kinds(self.workspace.inputs()), ['runtime'])
+
+    def test_windows_needs_no_restored_runtime(self) -> None:
+        shutil.rmtree(self.workspace.runtime)
+        self.assertEqual(self.kinds(self.workspace.inputs(platform='windows-x64')), [])
+
     def test_the_diagnostic_names_the_cause_and_the_override(self) -> None:
         text: str = guard.diagnostic([guard.Finding('locale', 'LANG is x', 'set LANG=C.UTF-8')], False)
         self.assertTrue(text.startswith(guard.HEADLINE))
@@ -236,6 +254,14 @@ class CommandTests(unittest.TestCase):
 
     def test_the_flag_override_goes_on(self) -> None:
         self.assertEqual(self.run_main(self.base() + ['--launcher', '', '--allow-full-build'], {})[0], 0)
+
+    def test_a_runtime_warning_goes_on(self) -> None:
+        shutil.rmtree(self.workspace.runtime)
+        code: int
+        text: str
+        code, text = self.run_main(self.base(), {})
+        self.assertEqual(code, 0)
+        self.assertIn('warning: [runtime]', text)
 
     def test_environment_prints_the_compile_settings(self) -> None:
         output: io.StringIO = io.StringIO()

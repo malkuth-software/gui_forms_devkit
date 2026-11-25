@@ -216,6 +216,34 @@ class FetchTests(unittest.TestCase):
         config: Path = self.workspace / '.sdk/gui-forms-sdk/lib/cmake/GUIForms/GUIFormsConfig.cmake'
         self.assertEqual(config.read_text(), 'one')
 
+    def test_the_runtime_asset_is_restored_into_the_workspace(self) -> None:
+        sdk: Path = sdk_archive(self.archives, 'sdk.tar.gz', 'top', 'one')
+        runtime: Path = self.archives / 'gui-forms-runtime-macos-arm64.tar.gz'
+        with tarfile.open(runtime, 'w:gz') as archive:
+            data: bytes = b'{}'
+            info: tarfile.TarInfo = tarfile.TarInfo('.build/toolchain/llvm-22.1.8-macos14/runtime-manifest.json')
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+        self.record(sha(1), sdk)
+        record: dict[str, Any] = resolver.read_resolved(self.workspace)
+        record['assets']['macos-arm64']['runtime'] = {'name': runtime.name,
+                                                      'sha256': hashlib.sha256(runtime.read_bytes()).hexdigest()}
+        resolver.write_resolved(self.workspace, record)
+
+        def download(repository: str, tag: str, name: str, directory: Path) -> Path:
+            return runtime if name == runtime.name else sdk
+        resolver.fetch(self.workspace, 'macos-arm64', downloader=download)
+        self.assertTrue((self.workspace / '.build/toolchain/llvm-22.1.8-macos14/runtime-manifest.json').is_file())
+        self.assertTrue((self.workspace / resolver.RUNTIME_RECORD).is_file())
+
+    def test_a_runtime_asset_is_recorded_when_published(self) -> None:
+        listed: dict[str, Any] = release('build-' + sha(1), '2026-11-20T00:00:00Z')
+        listed['assets'].append(asset('gui-forms-runtime-linux-x64.tar.gz'))
+        candidate: resolver.Candidate = resolver.candidates([listed], pin(), 'main')[0]
+        record: dict[str, Any] = resolver.resolved_record(pin(), 'main', candidate, sdk_manifest('1.0.3'))
+        self.assertEqual(record['assets']['linux-x64']['runtime']['name'], 'gui-forms-runtime-linux-x64.tar.gz')
+        self.assertNotIn('runtime', record['assets']['macos-arm64'])
+
     def test_an_escaping_member_is_refused(self) -> None:
         path: Path = self.archives / 'bad.tar.gz'
         with tarfile.open(path, 'w:gz') as archive:

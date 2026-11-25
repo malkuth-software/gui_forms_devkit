@@ -44,6 +44,13 @@ path-for-path copy.
 | `harness/check_retained_mode.py` | the retained-mode review every GUI.Forms app benefits from (consumer profile) |
 | `templates/app/tests/interaction_tests.cpp`, `example_app/tests/` | the pointer-motion test: hover and drag cost no layout |
 | `harness/check_house_style.py`, `check_lifetime_rules.py` | opt-in, the strict profile (`harness/run_checks.py --profile strict`); our apps switch it on, outsiders may leave it off. The retained check also reuses the house-style lexer |
+| `harness/resolve_gui_forms.py` | new: resolves `devkit.toml`'s pin to a published build, restores its `gui-forms-runtime-<platform>` asset when it has one, and unpacks its SDK at `.sdk/gui-forms-sdk` |
+| `harness/build_guard.py`, `harness/cmake/DevkitBuildGuard.cmake` | new: stops a build that would not use the prebuilt SDK and restored cache ("likely misconfiguration preventing efficient incremental building"); a runtime to build is a warning only |
+| `harness/build_macos_runtimes.py`, `build_linux_runtimes.py` | the fallback when no published runtime asset verifies: `restore_local.py runtime` builds one from source |
+| `harness/compiler_identity.py` | a consumer's own CI keys its caches on the compiler's identity, as ours does |
+| `harness/ci_cache.py` | a consumer's own CI saves and restores its ccache the same way |
+| `harness/install_linux_ci_packages.sh` | the Linux packages a consumer's CI runner needs to build against the SDK |
+| `harness/audit_macos_minimum.py` | checks a consumer's macOS binaries against the deployment minimum before they ship |
 | `harness/run_checks.py` | new: runs the checks of the consumer or strict profile |
 | `docs/adopting.md`, `docs/new_app.md` | how an app adopts the harness and how new_app works |
 | the tests of each kept tool (`harness/test_*.py`) | run with `python3 -B -m unittest discover -s harness/harness -p "test_*.py"` |
@@ -56,7 +63,7 @@ path-for-path copy.
 | own-runtime import evidence | a library-tier release proof; consumers link the SDK as published |
 | `check_state_machines.py`, `clang_ast*`, `check_loop_branches.py`, `codemod_records.py`, `check_const_restrict.py`, `check_copies.py` | the state-machine gate and its AST tooling are the library tier's strict review |
 | `checkpoint/`, `lockstep.py`, `change_selection.py`, `native_tests.py` | checkpoint and lockstep tooling for our repositories |
-| `ci_build_steps.py`, `ci_cache.py`, `ci_promote.py`, `ci_tree_receipt.py`, `ci_sanitizer_seed.py`, `publish_cache.py`, `prune_cache_releases.py`, `bootstrap_proof.py`, `compiler_identity.py`, `install_linux_ci_packages.sh`, `audit_macos_minimum.py`, `build_macos_runtimes.py`, `cache_manifest.py` | the library tier's CI pipeline: producing and promoting caches and runtimes, which consumers only restore |
+| `ci_build_steps.py`, `ci_promote.py`, `ci_tree_receipt.py`, `ci_sanitizer_seed.py`, `publish_cache.py`, `prune_cache_releases.py`, `bootstrap_proof.py`, `cache_manifest.py` | the library tier's CI pipeline: producing, promoting and pruning the published caches and runtime assets, which consumers only restore |
 | `claude/` plugins, `fransushi`, `.github/workflows/harness-*.yml` | our agent tooling and the library tier's reusable workflows |
 | `projects/{books,games,swiftedit,plan-paint,file_manager}.toml` | each app's project file moves into its own repository |
 | `docs/contract.md`, `docs/workflow.md`, `docs/ic_declarations.md`, `CHANGELOG.md` | template_harness's own contract and history |

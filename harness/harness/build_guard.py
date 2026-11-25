@@ -41,6 +41,9 @@ check (exit 0: go on; 3: stopped)
                  --compile-env on top, which is what the CMake launcher sets);
     locale       LANG, LC_ALL, LC_CTYPE and LC_MESSAGES are the recorded ones,
                  unless the sloppiness holds "locale";
+    runtime      (a warning, never a stop) on macOS and Linux, a C++ runtime is
+                 restored under .build/toolchain/: without one, restore_local.py
+                 runtime builds it (minutes, once per workspace);
     hit-rate     with a dependency record (<workspace>/.ci/devkit-deps.json,
                  published inside the cache archive by `record`), the share
                  of the objects to compile whose recorded inputs are byte
@@ -87,6 +90,10 @@ SDK_RECORD: str = 'devkit-sdk.json'
 RESOLVED_RECORD: str = '.ci/gui_forms-resolved.json'
 CACHE_MANIFEST: str = 'cache-manifest.json'
 DEPS_RECORD: str = '.ci/devkit-deps.json'
+# Where restore_local.py keeps the C++ runtime (build_environment.RUNTIME_DIRECTORY).
+RUNTIME_DIRECTORY: str = '.build/toolchain'
+RUNTIME_MANIFEST: str = 'runtime-manifest.json'
+UNVERIFIED_SUFFIX: str = '.unverified'
 LOCALE_VARIABLES: tuple[str, ...] = ('LANG', 'LC_ALL', 'LC_CTYPE', 'LC_MESSAGES')
 CCACHE_VARIABLES: tuple[str, ...] = ('CCACHE_COMPILERCHECK', 'CCACHE_SLOPPINESS')
 DEFAULT_THRESHOLD: float = 0.9
@@ -103,6 +110,8 @@ class Finding:
     kind: str
     what: str
     fix: str
+    # False for a warning: reported, and the build goes on.
+    stops: bool = True
 
 
 @dataclass(frozen=True)
@@ -296,6 +305,24 @@ def check_environment(inputs: Inputs, expected: dict[str, str]) -> list[Finding]
     return findings
 
 
+def check_runtime(workspace: Path, platform: str) -> list[Finding]:
+    """A warning when macOS or Linux has no restored C++ runtime: building one is slow, not wrong."""
+    if platform == 'windows-x64':
+        return []
+    directory: Path = workspace / RUNTIME_DIRECTORY
+    found: list[Path] = [] if not directory.is_dir() else [
+        manifest.parent for manifest in directory.glob('*/' + RUNTIME_MANIFEST)
+        if not manifest.parent.name.endswith(UNVERIFIED_SUFFIX)]
+    if found:
+        return []
+    finding: Finding = Finding('runtime', 'no restored C++ runtime under ' + directory.as_posix() + ': it will be '
+                               'built from source, which takes minutes once per workspace',
+                               'python3 -B harness/harness/resolve_gui_forms.py fetch --platform ' + platform
+                               + ' restores the build\'s gui-forms-runtime asset when it publishes one; '
+                               'restore_local.py runtime verifies it', stops=False)
+    return [finding]
+
+
 def unquote(text: str) -> str:
     return text[1:-1] if len(text) >= 2 and text[0] == text[-1] == '"' else text
 
@@ -402,7 +429,17 @@ def check(inputs: Inputs) -> list[Finding]:
     objects, sources = objects_to_compile(inputs, deps)
     findings += check_sources(sources, 'the dry run')
     findings += check_hit_rate(inputs, objects, deps)
+    findings += check_runtime(inputs.workspace, inputs.platform)
     return findings
+
+
+def warning_text(findings: list[Finding]) -> str:
+    lines: list[str] = []
+    finding: Finding
+    for finding in findings:
+        lines.append('devkit build guard: warning: [' + finding.kind + '] ' + finding.what)
+        lines.append('      fix: ' + finding.fix)
+    return '\n'.join(lines)
 
 
 def diagnostic(findings: list[Finding], overridden: bool) -> str:
@@ -528,7 +565,11 @@ def main(argv: list[str] | None = None) -> int:
                             shlex.split(launcher)[-1] if launcher else '', compile_environment,
                             arguments.gui_forms_dir, arguments.imported, read_sources(arguments.sources_file),
                             arguments.dry_run, arguments.threshold)
-    findings: list[Finding] = check(inputs)
+    found: list[Finding] = check(inputs)
+    warnings: list[Finding] = [finding for finding in found if not finding.stops]
+    findings: list[Finding] = [finding for finding in found if finding.stops]
+    if warnings:
+        print(warning_text(warnings), file=sys.stderr)
     if not findings:
         print('devkit build guard: the build uses the prebuilt SDK and the restored cache as expected')
         return 0

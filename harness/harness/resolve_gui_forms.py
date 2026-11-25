@@ -32,7 +32,11 @@ resolve
     always says which GUI.Forms it was built on.
 
 fetch
-    Downloads the resolved build's SDK for one platform, checks it against
+    Restores the resolved build's C++ runtime for the platform when it
+    publishes one (gui-forms-runtime-<platform>.tar.gz, extracted into the
+    workspace as restore_local.py extracts it; `restore_local.py runtime`
+    then verifies it, and builds a runtime only when none verifies), and
+    downloads the resolved build's SDK for one platform, checks it against
     the SHA-256 the record holds, and unpacks it at
     <workspace>/.sdk/gui-forms-sdk/, whatever the revision. ccache keys
     include include paths, so a per-revision path would make every devkit
@@ -80,9 +84,14 @@ RESOLVED_RECORD: str = '.ci/gui_forms-resolved.json'
 SDK_DIRECTORY: str = '.sdk/gui-forms-sdk'
 SDK_RECORD: str = 'devkit-sdk.json'
 DOWNLOAD_DIRECTORY: str = '.sdk/downloads'
+RUNTIME_RECORD: str = '.ci/gui_forms-runtime.json'
 SDK_ASSET: str = 'gui-forms-sdk-{platform}.tar.gz'
 CACHE_ASSET: str = 'gui-forms-cache-{platform}.tar.gz'
 MANIFEST_ASSET: str = 'gui-forms-sdk-manifest.json'
+# Optional: the C++ runtime the build linked (macOS and Linux), restored so a
+# consumer need not build it (restore_local.py runtime verifies it, and builds
+# one only when none verifies).
+RUNTIME_ASSET: str = 'gui-forms-runtime-{platform}.tar.gz'
 CHANNELS: tuple[str, ...] = ('main', 'stable')
 PLATFORMS: tuple[str, ...] = ('linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64')
 RELEASES_PER_PAGE: int = 100
@@ -301,6 +310,9 @@ def resolved_record(pin: Pin, channel: str, candidate: Candidate, manifest: dict
         for kind, pattern in (('sdk', SDK_ASSET), ('cache', CACHE_ASSET)):
             name: str = pattern.format(platform=platform)
             entry[kind] = {'name': name, 'sha256': asset_digest(candidate.assets[name])}
+        runtime: str = RUNTIME_ASSET.format(platform=platform)
+        if runtime in candidate.assets:
+            entry['runtime'] = {'name': runtime, 'sha256': asset_digest(candidate.assets[runtime])}
         assets[platform] = entry
     revision: str = str(manifest.get('revision', '')) or candidate.revision
     record: dict[str, Any] = {'schema': 1, 'repository': pin.repository, 'channel': channel, 'tag': candidate.tag,
@@ -400,13 +412,52 @@ def unpack_sdk(archive: Path, destination: Path) -> None:
     shutil.rmtree(previous, ignore_errors=True)
 
 
+def extract_into(archive: Path, workspace: Path) -> None:
+    """Extracts an archive into the workspace; members must be relative and stay inside."""
+    payload: tarfile.TarFile
+    with tarfile.open(archive, 'r:*') as payload:
+        member: tarfile.TarInfo
+        for member in payload.getmembers():
+            name: PurePosixPath = PurePosixPath(member.name)
+            if not name.parts or name.is_absolute() or '..' in name.parts:
+                raise ResolveError('Unexpected runtime archive member: ' + member.name)
+        payload.extractall(workspace, filter='data')
+
+
+def fetch_runtime(workspace: Path, record: dict[str, Any], runtime: dict[str, str], dry_run: bool,
+                  downloader: Callable[[str, str, str, Path], Path]) -> None:
+    """Restores the build's runtime asset into the workspace, once per asset."""
+    marker: Path = workspace / RUNTIME_RECORD
+    if marker.is_file() and json.loads(marker.read_text(encoding='utf-8')).get('sha256') == runtime['sha256'] \
+            and runtime['sha256']:
+        return
+    if dry_run:
+        print('would restore ' + runtime['name'] + ' of ' + str(record.get('tag')) + ' into ' + str(workspace),
+              flush=True)
+        return
+    archive: Path = downloader(str(record['repository']), str(record['tag']), runtime['name'],
+                               workspace / DOWNLOAD_DIRECTORY)
+    digest: str = file_digest(archive)
+    if runtime['sha256'] and digest != runtime['sha256']:
+        raise ResolveError(runtime['name'] + ' of ' + str(record['tag']) + ' does not match its recorded SHA-256')
+    extract_into(archive, workspace)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({'tag': record['tag'], 'asset': runtime['name'], 'sha256': digest}) + '\n',
+                      encoding='utf-8')
+    print('Restored ' + runtime['name'] + ' of ' + str(record['tag']) + '; restore_local.py runtime verifies it',
+          flush=True)
+
+
 def fetch(workspace: Path, platform: str, dry_run: bool = False,
           downloader: Callable[[str, str, str, Path], Path] = download_asset) -> Path:
-    """Unpacks the resolved build's SDK for platform at the fixed path; returns that path."""
+    """Restores the resolved build's runtime when it has one and unpacks its SDK for platform at the fixed path;
+    returns that path."""
     record: dict[str, Any] = read_resolved(workspace)
     assets: Any = record.get('assets', {}).get(platform)
     if not isinstance(assets, dict):
         raise ResolveError('The resolved build ' + str(record.get('tag')) + ' has no SDK for ' + platform)
+    if isinstance(assets.get('runtime'), dict):
+        fetch_runtime(workspace, record, assets['runtime'], dry_run, downloader)
     sdk: dict[str, str] = assets['sdk']
     destination: Path = workspace / SDK_DIRECTORY
     marker: Path = destination / SDK_RECORD
