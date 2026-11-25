@@ -7,8 +7,41 @@ bootstrap that sets the product up on a clean machine. GUI.Forms was the
 first product to adopt the harness (its PR #408) and is the worked example
 throughout. `docs/contract.md` lists what may be relied on.
 
-A new GUI.Forms app need not do this by hand: `new_app.sh` (`docs/new_app.md`)
-generates one that already meets the checklist in section 8.
+A new GUI.Forms app need not do this by hand. From a devkit checkout,
+`sh harness/bootstrap.sh new-app NAME [DIR]` makes one on this machine,
+with `git init` and a first commit and nothing pushed;
+`powershell -File harness\bootstrap.ps1 new-app NAME` does the same on
+Windows. The in-house `new_app.sh` (`docs/new_app.md`) also creates the
+app's repositories and coordination files.
+
+## An app on the devkit
+
+An app made by `new-app` builds against the prebuilt GUI.Forms SDK and
+compiles none of GUI.Forms:
+
+- `devkit.toml` pins GUI.Forms by major with a floor (`[gui_forms] major`,
+  `minimum`, `channel`, `platforms`) and names the checks' profile
+  (`[checks] profile`, `consumer` or the opt-in `strict`);
+- `python3 build.py --jobs 4` runs the devkit's `harness/devkit_build.py`
+  for the app: it resolves the pin to one green build
+  (`resolve_gui_forms.py`, recorded in `.ci/gui_forms-resolved.json`),
+  unpacks that build's SDK at `.sdk/gui-forms-sdk`, restores the toolchain
+  and the C++ runtime (on Windows the own runtime, through
+  `own_runtime_local.py`; `sh harness/bootstrap.sh own-runtime --workspace
+  DIR` runs that step alone), writes `.ci/local-build-env.*`, and
+  configures, builds and tests. `--resolve` moves the app to a newer build,
+  `--floor` builds against the floor; `python3 build.py check` runs
+  `run_checks.py` at the app's profile;
+- `CMakeLists.txt` includes `harness/cmake/DevkitBuildGuard.cmake`, whose
+  build guard stops a configure or build that would compile GUI.Forms from
+  source or miss the SDK or the cache, naming each mismatch and its fix
+  (`--allow-full-build` or `GUI_FORMS_DEVKIT_ALLOW_FULL_BUILD` overrides it);
+- `harness.toml` is the app's project file (it declares no notes) and
+  `harness.lock` the devkit commit; `build.py` keeps the devkit at that
+  commit in `.devkit/`.
+
+The rest of this guide is the library tier's: the CI, checkpoint and
+lockstep machinery that GUI.Forms and the products built in house adopt.
 
 ## 1. Prerequisites, and what the harness provides
 
@@ -576,8 +609,11 @@ the record. A failed build leaves `current-<target>.json` as it was.
 
 ```sh
 cmake -S . -B build -DCMAKE_PREFIX_PATH="$(python3 template_harness/harness/lockstep.py prefix)" ...
-python3 template_harness/example_app/ci_build.py --gui-forms-prefix "$(python3 template_harness/harness/lockstep.py prefix)"
 ```
+
+An app on the devkit takes no lockstep prefix: it builds against the
+prebuilt SDK at `.sdk/gui-forms-sdk`, and its build guard stops a configure
+that finds GUI.Forms anywhere else.
 
 `prefix` fails, naming the command to run, when the clone's HEAD has not
 been built. A product therefore never builds against a stale install by
