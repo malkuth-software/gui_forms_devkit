@@ -1,0 +1,700 @@
+#!/usr/bin/env python3
+"""The project file: every product-specific name the harness tools use.
+
+A product describes itself once, in a TOML file (projects/gui_forms.toml is
+GUI.Forms'). The tools read it through current(), which loads the file named
+by HARNESS_PROJECT, or else harness.toml at the workspace root. The
+workspace root is HARNESS_WORKSPACE when set, else the current directory; it
+holds the product's checkout (source_dir) and the CI state (.ci/, .ccache/,
+.build/), as GitHub's workspace does today. With source_dir "." the
+product's checkout is the workspace root itself, and the harness and the CI
+state sit inside it (File Manager's layout).
+
+A few fields may be left out (ci.cache_asset_prefix, ci.runtime_asset_prefix,
+ci.sdk_asset_prefix, ci.pinned_cache_revisions,
+tests.areas_file, the [state_machines] table, and the [checkpoint] and
+[bootstrap] tables); a tool that needs one fails with MissingField, "project
+<name> has no <field>", and the others run.
+
+The names derived here are the names on disk and on GitHub: artifact and
+release asset names, environment variables, build directories. A product
+that changes a field starts a new history of caches and receipts, so a
+field is changed deliberately or not at all.
+
+    python3 harness/project.py show                 print the loaded project
+    python3 harness/project.py linux-packages NAME  print a package profile, space-separated
+    python3 harness/project.py variable NAME        print the environment variable <env_prefix>_NAME
+
+TOML is read with tomllib (Python 3.11 and later). Every CI job that runs the
+tools sets up Python 3.12 or 3.14, the Windows toolchain itself needs 3.14,
+and Ubuntu 24.04's own python3 is 3.12, so no supported host lacks it.
+"""
+from __future__ import annotations
+import argparse
+from dataclasses import dataclass
+import os
+from pathlib import Path
+import sys
+import tomllib
+from typing import Any
+
+PROJECT_VARIABLE: str = 'HARNESS_PROJECT'
+WORKSPACE_VARIABLE: str = 'HARNESS_WORKSPACE'
+DEFAULT_PROJECT_NAME: str = 'harness.toml'
+SCHEMA: int = 1
+# source_dir for a product whose checkout is the workspace root: the harness
+# (template_harness/), the notes and the CI state (.build/, .ccache/, .ci/)
+# then sit inside the checkout, which must ignore them.
+ROOT_SOURCE_DIR: str = '.'
+# The Ubuntu package profile of GUI.Forms' native build, which a workspace installs when the
+# project has it and its [bootstrap] table names none (Project.workspace_linux_profile).
+LINUX_WORKSPACE_PROFILE: str = 'toolkit'
+# In a native_job template, the platform (linux-x64, windows-x64, ...).
+PLATFORM_PLACEHOLDER: str = '{platform}'
+
+
+class MissingField(ValueError):
+    """A tool needs a project-file field that this product's file leaves out."""
+
+
+@dataclass(frozen=True)
+class StateMachineArea:
+    """A path prefix under the source root and the owning area its findings are grouped under."""
+    prefix: str
+    area: str
+
+
+@dataclass(frozen=True)
+class ReviewedShape:
+    """A record whose C3 status shape a person reviewed and kept, with the one-line reason."""
+    path: str
+    record: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ExpectedCompileFailure:
+    """Translation units meant not to compile (a test that a bad program is refused at
+    compile time), by a glob over the checkout-relative POSIX path, with the reason."""
+    pattern: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class CheckpointTable:
+    """[checkpoint], for checkpoint/checkpoint.py (its docstring explains each field)."""
+    # The integration tree, relative to the workspace root or absolute.
+    tree: str
+    verify: tuple[str, ...]
+    base: str
+    remote: str
+    branch_prefix: str
+    merge_method: str
+
+
+@dataclass(frozen=True)
+class BootstrapPlatform:
+    """[bootstrap.<platform>]: the commands that prepare a workspace's build on that platform
+    and the build environment CI gives its build there.
+
+    prepare: commands run from the workspace root after the restore, in order, with the
+    build environment; each NAME=VALUE line one prints (NAME in capitals, digits and
+    underscores) joins the build environment (GUI.Forms' tools/own_runtime.py build prints
+    its three settings that way). environment: NAME = value pairs of that environment,
+    {workspace} becoming the workspace root (forward slashes). restore_local.py env writes
+    the result.
+    """
+    prepare: tuple[tuple[str, ...], ...]
+    environment: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class BootstrapTable:
+    """[bootstrap], for harness/bootstrap.py: the notes and projects repositories and the smoke build."""
+    notes_repository: str
+    # The notes side branch checked out as a worktree beside notes/ (default: the project name).
+    notes_branch: str
+    projects_repository: str
+    # Run from the workspace root; the argument {python} becomes the running interpreter.
+    smoke: tuple[str, ...]
+    # The [linux_packages] profile a workspace installs on Linux (Project.workspace_linux_profile);
+    # None: "toolkit" when the project has it, else its only profile.
+    linux_packages: str | None
+    # [bootstrap.<platform>] tables by platform name; a platform without one needs nothing.
+    platforms: dict[str, BootstrapPlatform]
+    # [bootstrap] environment: NAME = value pairs of every platform's build environment
+    # ({workspace} as in BootstrapPlatform); a platform's own environment overrides them.
+    environment: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class Project:
+    """One product's names, as read from its project file (see projects/gui_forms.toml)."""
+    path: Path
+    name: str
+    # The product's own repository (owner/name), recorded in manifests.
+    repository: str
+    # The product's checkout, relative to the workspace root, without a slash;
+    # "." when the product's checkout is the workspace root itself (ROOT_SOURCE_DIR).
+    source_dir: str
+    # The build tree's directory name under .build/native-<platform>/.
+    build_name: str
+    # Environment variables are <env_prefix>_<NAME> (GUI_FORMS_LLVM_RUNTIME).
+    env_prefix: str
+    # Every workflow artifact name starts with it (gui-validated-..., gui-tree-...).
+    artifact_prefix: str
+    # A compiler-cache archive is <cache_asset_prefix><platform>.tar.gz; None
+    # for a product that publishes no compiler caches (cache_asset fails).
+    cache_asset_prefix: str | None
+    # Beside the compiler cache in the same build-<sha> release, when the product
+    # publishes them (publish_cache.py; None: it does not): the C++ runtime CI
+    # built (<runtime_asset_prefix><platform>.tar.gz, extracted into the
+    # workspace; restore_local.py cache restores it), and the installed SDK an
+    # application links instead of compiling the product
+    # (<sdk_asset_prefix><platform>.tar.gz).
+    runtime_asset_prefix: str | None
+    sdk_asset_prefix: str | None
+    # The workflow whose runs may produce receipts and caches, and its native
+    # job's name: a prefix ("native" matches "native (<runner>, <platform>, ...)")
+    # or a template with {platform} that a job's whole name must equal
+    # (native_job_matches).
+    native_workflow: str
+    native_job: str
+    # The repository the Windows toolchain manifest records as its publisher.
+    # Releases are read from the running repository (GITHUB_REPOSITORY), as before.
+    toolchain_repository: str
+    # A toolchain archive is <toolchain_asset_prefix><platform>.tar.zst.
+    toolchain_asset_prefix: str
+    # Under the source root: the pinned cache revisions and the test-area rules;
+    # None when the product has none (the tools that read them fail).
+    pinned_cache_revisions: str | None
+    test_areas_file: str | None
+    # A test file's stem X names the tests X and <prefix>X for each prefix.
+    test_name_prefixes: tuple[str, ...]
+    # Ubuntu package profiles for install_linux_ci_packages.sh, in install order.
+    linux_packages: dict[str, tuple[str, ...]]
+    # check_state_machines.py: the first-party directories, the atom-vocabulary
+    # headers, the area of each path prefix (most specific first), and the paths
+    # whose change widens a changed-code run to the full tree. Without a
+    # [state_machines] table, has_state_machines is false and the lists are empty.
+    has_state_machines: bool
+    first_party_dirs: tuple[str, ...]
+    vocabulary_headers: tuple[str, ...]
+    state_machine_areas: tuple[StateMachineArea, ...]
+    full_tree_triggers: tuple[str, ...]
+    # C3 records reviewed and kept as they are (state_machines.reviewed_shapes,
+    # optional): the candidate is listed with its reason instead of raised.
+    reviewed_shapes: tuple[ReviewedShape, ...]
+    # Units meant not to compile (state_machines.expected_compile_failures,
+    # optional): check_state_machines.py runs them but does not analyse them,
+    # and --gate fails when one compiles.
+    expected_compile_failures: tuple[ExpectedCompileFailure, ...]
+    # check_loop_branches.py: the decisions file, a path in the product
+    # checkout ([loop_branches] decisions, optional; "" when none).
+    loop_branch_decisions: str
+    # check_const_restrict.py: the decisions file, a path in the product
+    # checkout ([const_restrict] decisions, optional; "" when none).
+    const_restrict_decisions: str
+    # check_copies.py: the decisions file, a path in the product checkout
+    # ([copies] decisions, optional; "" when none).
+    copies_decisions: str
+    # ci_build_steps.py: the product's own environment variables, without the
+    # prefix, that change what a configure records (SYSTEM_BUILD_TOOLS).
+    configure_variable_names: tuple[str, ...]
+    # cache_manifest.py: the build profile the cache records, the native build
+    # options in recorded order, and each platform's overrides of them.
+    cache_profile: str
+    native_options: dict[str, str | int | bool]
+    platform_native_options: dict[str, dict[str, str | int | bool]]
+    # The optional [checkpoint] and [bootstrap] tables; None when absent.
+    checkpoint: CheckpointTable | None
+    bootstrap: BootstrapTable | None
+
+    def variable(self, name: str) -> str:
+        """The environment variable <env_prefix>_<name>."""
+        result: str = self.env_prefix + '_' + name
+        return result
+
+    def artifact(self, suffix: str) -> str:
+        """A workflow artifact's name: the prefix, then the suffix (validated-..., tree-...)."""
+        result: str = self.artifact_prefix + suffix
+        return result
+
+    def missing(self, field: str) -> MissingField:
+        """The error a tool raises when it needs a field this project file leaves out."""
+        error: MissingField = MissingField('project ' + self.name + ' has no ' + field + ' (' + str(self.path) + ')')
+        return error
+
+    def require_cache_asset_prefix(self) -> str:
+        if self.cache_asset_prefix is None:
+            raise self.missing('ci.cache_asset_prefix')
+        return self.cache_asset_prefix
+
+    def require_pinned_cache_revisions(self) -> str:
+        if self.pinned_cache_revisions is None:
+            raise self.missing('ci.pinned_cache_revisions')
+        return self.pinned_cache_revisions
+
+    def require_test_areas_file(self) -> str:
+        if self.test_areas_file is None:
+            raise self.missing('tests.areas_file')
+        return self.test_areas_file
+
+    def require_state_machines(self) -> None:
+        if not self.has_state_machines:
+            raise self.missing('[state_machines]')
+
+    def workspace_linux_profile(self) -> str:
+        """The Ubuntu package profile a workspace installs (restore_local prints its command): the one
+        [bootstrap] linux_packages names, else LINUX_WORKSPACE_PROFILE when the project has it, else its
+        only profile, else a placeholder naming the choices, which is no profile name."""
+        if self.bootstrap is not None and self.bootstrap.linux_packages is not None:
+            return self.bootstrap.linux_packages
+        if LINUX_WORKSPACE_PROFILE in self.linux_packages:
+            return LINUX_WORKSPACE_PROFILE
+        profiles: list[str] = sorted(self.linux_packages)
+        if len(profiles) == 1:
+            return profiles[0]
+        choice: str = '<profile: ' + ' | '.join(profiles) + '>'
+        return choice
+
+    def cache_asset(self, platform: str) -> str:
+        """The compiler-cache archive's file and release asset name for a platform."""
+        result: str = self.require_cache_asset_prefix() + platform + '.tar.gz'
+        return result
+
+    def runtime_asset(self, platform: str) -> str | None:
+        """The runtime archive's name for a platform, or None when the product publishes none."""
+        result: str | None = None if self.runtime_asset_prefix is None else self.runtime_asset_prefix + platform + '.tar.gz'
+        return result
+
+    def sdk_asset(self, platform: str) -> str | None:
+        """The installed SDK archive's name for a platform, or None when the product publishes none."""
+        result: str | None = None if self.sdk_asset_prefix is None else self.sdk_asset_prefix + platform + '.tar.gz'
+        return result
+
+    def native_job_matches(self, job_name: str, platform: str) -> bool:
+        """Whether a run's job is this project's native job for platform.
+
+        A native_job with {platform} is a template: the job's whole name must
+        equal it with the platform substituted ("{platform}" for a matrix job
+        named by its platform, "native / {platform}" for one inside a called
+        workflow). Otherwise native_job is the job's name before its matrix
+        values, which must list the platform: "native" matches
+        "native (ubuntu-24.04, linux-x64, bash) / build".
+        """
+        if PLATFORM_PLACEHOLDER in self.native_job:
+            expected: str = self.native_job.replace(PLATFORM_PLACEHOLDER, platform)
+            return job_name == expected
+        matched: bool = job_name.startswith(self.native_job + ' (') and ', ' + platform + ',' in job_name
+        return matched
+
+    def configure_variables(self) -> tuple[str, ...]:
+        """The product's configure variables with their prefix (GUI_FORMS_SYSTEM_BUILD_TOOLS)."""
+        names: list[str] = []
+        name: str
+        for name in self.configure_variable_names:
+            names.append(self.variable(name))
+        result: tuple[str, ...] = tuple(names)
+        return result
+
+    def native_options_for(self, platform: str) -> dict[str, str | int | bool]:
+        """The native options a platform's cache records: the shared ones, each override in its place."""
+        options: dict[str, str | int | bool] = dict(self.native_options)
+        options.update(self.platform_native_options.get(platform, {}))
+        return options
+
+    def workspace_root(self) -> Path:
+        result: Path = workspace_root()
+        return result
+
+    def at_workspace_root(self) -> bool:
+        """Whether the product's checkout is the workspace root (source_dir "."), holding the harness and state."""
+        result: bool = self.source_dir == ROOT_SOURCE_DIR
+        return result
+
+    def source_root(self) -> Path:
+        """The product's checkout: the workspace root itself when source_dir is "."."""
+        result: Path = workspace_root() if self.at_workspace_root() else workspace_root() / self.source_dir
+        return result
+
+    def build_tree(self, platform: str, sanitize: bool = False) -> str:
+        """The build tree relative to the workspace root: .build/native-<platform>/<build_name>[-sanitize]."""
+        name: str = self.build_name + ('-sanitize' if sanitize else '')
+        result: str = '.build/native-' + platform + '/' + name
+        return result
+
+
+def workspace_root() -> Path:
+    named: str = os.environ.get(WORKSPACE_VARIABLE, '')
+    result: Path = Path(named).resolve() if named else Path.cwd().resolve()
+    return result
+
+
+def text_field(table: dict[str, Any], key: str, where: str) -> str:
+    value: Any = table.get(key)
+    if type(value) is not str:
+        raise ValueError(where + '.' + key + ' must be a string')
+    return value
+
+
+def optional_text(table: dict[str, Any], key: str, where: str) -> str | None:
+    """A string field that may be left out (None); present, it must be a non-empty string."""
+    if key not in table:
+        return None
+    value: Any = table[key]
+    if type(value) is not str or not value:
+        raise ValueError(where + '.' + key + ' must be a non-empty string when present')
+    return value
+
+
+def text_list(table: dict[str, Any], key: str, where: str) -> tuple[str, ...]:
+    value: Any = table.get(key)
+    if type(value) is not list:
+        raise ValueError(where + '.' + key + ' must be a list of strings')
+    entry: Any
+    for entry in value:
+        if type(entry) is not str:
+            raise ValueError(where + '.' + key + ' must be a list of strings')
+    result: tuple[str, ...] = tuple(value)
+    return result
+
+
+def table_field(document: dict[str, Any], key: str) -> dict[str, Any]:
+    value: Any = document.get(key)
+    if type(value) is not dict:
+        raise ValueError('[' + key + '] is missing')
+    return value
+
+
+def package_profiles(table: dict[str, Any]) -> dict[str, tuple[str, ...]]:
+    """Each profile's packages: an `extends` profile's packages first, then its own."""
+    profiles: dict[str, tuple[str, ...]] = {}
+    name: str
+    for name in table:
+        profile: Any = table[name]
+        if type(profile) is not dict:
+            raise ValueError('[linux_packages.' + name + '] must be a table')
+        packages: tuple[str, ...] = text_list(profile, 'packages', 'linux_packages.' + name)
+        base: Any = profile.get('extends', '')
+        if base:
+            if type(base) is not str or base not in table or base == name:
+                raise ValueError('linux_packages.' + name + '.extends must name another profile')
+            if table[base].get('extends'):
+                raise ValueError('linux_packages.' + name + ' extends a profile that itself extends one')
+            packages = text_list(table[base], 'packages', 'linux_packages.' + base) + packages
+        profiles[name] = packages
+    return profiles
+
+
+def state_machine_areas(value: Any) -> tuple[StateMachineArea, ...]:
+    if type(value) is not list:
+        raise ValueError('state_machines.areas must be a list of [prefix, area] pairs')
+    areas: list[StateMachineArea] = []
+    pair: Any
+    for pair in value:
+        if type(pair) is not list or len(pair) != 2 or type(pair[0]) is not str or type(pair[1]) is not str:
+            raise ValueError('state_machines.areas must be a list of [prefix, area] pairs')
+        areas.append(StateMachineArea(pair[0], pair[1]))
+    result: tuple[StateMachineArea, ...] = tuple(areas)
+    return result
+
+
+def reviewed_shapes(value: Any) -> tuple[ReviewedShape, ...]:
+    """state_machines.reviewed_shapes: [path, record, reason] triples, each reason non-empty."""
+    message: str = 'state_machines.reviewed_shapes must be a list of [path, record, reason] triples'
+    if type(value) is not list:
+        raise ValueError(message)
+    shapes: list[ReviewedShape] = []
+    triple: Any
+    for triple in value:
+        if type(triple) is not list or len(triple) != 3:
+            raise ValueError(message)
+        part: Any
+        for part in triple:
+            if type(part) is not str or not part:
+                raise ValueError(message)
+        shapes.append(ReviewedShape(triple[0], triple[1], triple[2]))
+    result: tuple[ReviewedShape, ...] = tuple(shapes)
+    return result
+def expected_compile_failures(value: Any) -> tuple[ExpectedCompileFailure, ...]:
+    """state_machines.expected_compile_failures: [glob, reason] pairs, each part non-empty."""
+    message: str = 'state_machines.expected_compile_failures must be a list of [glob, reason] pairs'
+    if type(value) is not list:
+        raise ValueError(message)
+    failures: list[ExpectedCompileFailure] = []
+    pair: Any
+    for pair in value:
+        if type(pair) is not list or len(pair) != 2:
+            raise ValueError(message)
+        part: Any
+        for part in pair:
+            if type(part) is not str or not part.strip():
+                raise ValueError(message)
+        failures.append(ExpectedCompileFailure(pair[0], pair[1]))
+    result: tuple[ExpectedCompileFailure, ...] = tuple(failures)
+    return result
+
+
+def loop_branch_decisions(value: Any) -> str:
+    """[loop_branches] decisions: a relative path in the product checkout, or "" without the table."""
+    result: str = decisions_path(value, 'loop_branches')
+    return result
+
+
+def decisions_path(value: Any, table: str) -> str:
+    """A review tool's [<table>] decisions: a relative path in the product checkout, or "" without the table."""
+    if value is None:
+        return ''
+    if type(value) is not dict:
+        raise ValueError(f'[{table}] must be a table')
+    path: Any = value.get('decisions', '')
+    if type(path) is not str or path.startswith('/') or '\\' in path or '..' in path.split('/'):
+        raise ValueError(f'{table}.decisions must be a relative path in the product checkout')
+    return path
+
+
+def option_table(value: Any, where: str) -> dict[str, str | int | bool]:
+    if type(value) is not dict:
+        raise ValueError('[' + where + '] must be a table')
+    key: str
+    for key in value:
+        if type(value[key]) not in (str, int, bool):
+            raise ValueError(where + '.' + key + ' must be a string, an integer or a boolean')
+    result: dict[str, str | int | bool] = dict(value)
+    return result
+
+
+def platform_option_tables(value: Any, shared: dict[str, str | int | bool]) -> dict[str, dict[str, str | int | bool]]:
+    """Each platform's overrides; an override names an option the shared table has."""
+    if type(value) is not dict:
+        raise ValueError('[cache_manifest.platform_options] must be a table')
+    tables: dict[str, dict[str, str | int | bool]] = {}
+    platform: str
+    for platform in value:
+        where: str = 'cache_manifest.platform_options.' + platform
+        table: dict[str, str | int | bool] = option_table(value[platform], where)
+        key: str
+        for key in table:
+            if key not in shared:
+                raise ValueError(where + '.' + key + ' overrides no cache_manifest.native_options entry')
+        tables[platform] = table
+    return tables
+
+
+MERGE_METHODS: tuple[str, ...] = ('merge', 'squash', 'rebase')
+
+
+def named_text(table: dict[str, Any], key: str, where: str, default: str) -> str:
+    value: Any = table.get(key, default)
+    if type(value) is not str or not value:
+        raise ValueError(where + '.' + key + ' must be a non-empty string')
+    return value
+
+
+def checkpoint_table(value: Any) -> CheckpointTable | None:
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise ValueError('[checkpoint] must be a table')
+    verify: tuple[str, ...] = text_list(value, 'verify', 'checkpoint')
+    if not verify:
+        raise ValueError('checkpoint.verify must be a non-empty list of strings')
+    merge_method: str = named_text(value, 'merge_method', 'checkpoint', 'merge')
+    if merge_method not in MERGE_METHODS:
+        raise ValueError('checkpoint.merge_method must be one of ' + ', '.join(MERGE_METHODS))
+    table: CheckpointTable = CheckpointTable(
+        tree=text_field(value, 'tree', 'checkpoint'), verify=verify,
+        base=named_text(value, 'base', 'checkpoint', 'main'), remote=named_text(value, 'remote', 'checkpoint', 'origin'),
+        branch_prefix=named_text(value, 'branch_prefix', 'checkpoint', 'checkpoint/'), merge_method=merge_method)
+    return table
+
+
+# The platform names a [bootstrap.<platform>] table may use (harness/bootstrap.py PLATFORMS).
+BOOTSTRAP_PLATFORMS: tuple[str, ...] = ('windows-x64', 'linux-x64', 'linux-arm64', 'macos-arm64')
+
+
+def bootstrap_platform(value: Any, platform: str) -> BootstrapPlatform:
+    where: str = 'bootstrap.' + platform
+    if type(value) is not dict:
+        raise ValueError('[' + where + '] must be a table')
+    unknown: list[str] = sorted(set(value) - {'prepare', 'environment'})
+    if unknown:
+        raise ValueError('[' + where + '] has unknown keys: ' + ', '.join(unknown))
+    commands: Any = value.get('prepare', [])
+    if type(commands) is not list:
+        raise ValueError(where + '.prepare must be a list of commands (lists of strings)')
+    prepare: list[tuple[str, ...]] = []
+    command: Any
+    for command in commands:
+        prepare.append(text_list({'prepare': command}, 'prepare', where))
+    result: BootstrapPlatform = BootstrapPlatform(prepare=tuple(prepare),
+                                                  environment=environment_table(value.get('environment', {}), where))
+    return result
+
+
+def environment_table(table: Any, where: str) -> tuple[tuple[str, str], ...]:
+    """An environment table's NAME = value pairs, sorted by name."""
+    if type(table) is not dict:
+        raise ValueError(where + '.environment must be a table of strings')
+    environment: list[tuple[str, str]] = []
+    name: str
+    for name in sorted(table):
+        if type(table[name]) is not str:
+            raise ValueError(where + '.environment.' + name + ' must be a string')
+        environment.append((name, table[name]))
+    return tuple(environment)
+
+
+def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | None:
+    """Defaults: <owner>/notes, the project name as the notes branch, <owner>/projects, no smoke build,
+    no named Linux package profile, no platform preparation, no environment."""
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise ValueError('[bootstrap] must be a table')
+    owner: str = repository.partition('/')[0]
+    smoke: tuple[str, ...] = ()
+    if 'smoke' in value:
+        smoke = text_list(value, 'smoke', 'bootstrap')
+    platforms: dict[str, BootstrapPlatform] = {}
+    platform: str
+    for platform in BOOTSTRAP_PLATFORMS:
+        if platform in value:
+            platforms[platform] = bootstrap_platform(value[platform], platform)
+    table: BootstrapTable = BootstrapTable(
+        notes_repository=named_text(value, 'notes_repository', 'bootstrap', owner + '/notes'),
+        notes_branch=named_text(value, 'notes_branch', 'bootstrap', name),
+        projects_repository=named_text(value, 'projects_repository', 'bootstrap', owner + '/projects'),
+        smoke=smoke,
+        linux_packages=optional_text(value, 'linux_packages', 'bootstrap'),
+        platforms=platforms,
+        environment=environment_table(value.get('environment', {}), 'bootstrap'))
+    return table
+
+
+# The [state_machines] values of a project file that leaves the table out.
+EMPTY_STATE_MACHINES: dict[str, Any] = {
+    'first_party_dirs': [], 'vocabulary_headers': [], 'areas': [], 'full_tree_triggers': []}
+
+
+def parse(document: dict[str, Any], path: Path) -> Project:
+    """Validate a parsed project file whole before building the record."""
+    if document.get('schema') != SCHEMA:
+        raise ValueError(str(path) + ': schema must be ' + str(SCHEMA))
+    product: dict[str, Any] = table_field(document, 'project')
+    ci: dict[str, Any] = table_field(document, 'ci')
+    toolchain: dict[str, Any] = table_field(document, 'toolchain')
+    tests: dict[str, Any] = table_field(document, 'tests')
+    packages: dict[str, Any] = table_field(document, 'linux_packages')
+    # [state_machines] may be left out: check_state_machines.py then refuses to run.
+    has_state_machines: bool = 'state_machines' in document
+    machines: dict[str, Any] = table_field(document, 'state_machines') if has_state_machines else EMPTY_STATE_MACHINES
+    cache: dict[str, Any] = table_field(document, 'cache_manifest')
+    build: dict[str, Any] = table_field(document, 'build')
+    native_options: dict[str, str | int | bool] = option_table(cache.get('native_options'), 'cache_manifest.native_options')
+    source_dir: str = text_field(product, 'source_dir', 'project')
+    if not source_dir or source_dir.endswith('/') or '\\' in source_dir:
+        raise ValueError('project.source_dir must be a relative directory without a trailing slash')
+    parts: list[str] = source_dir.split('/')
+    if source_dir != ROOT_SOURCE_DIR and ('.' in parts or '..' in parts or '' in parts):
+        raise ValueError('project.source_dir must be "." or a directory under the workspace root, without . or ..')
+    project: Project = Project(
+        path=path,
+        name=text_field(product, 'name', 'project'),
+        repository=text_field(product, 'repository', 'project'),
+        source_dir=source_dir,
+        build_name=text_field(product, 'build_name', 'project'),
+        env_prefix=text_field(product, 'env_prefix', 'project'),
+        artifact_prefix=text_field(ci, 'artifact_prefix', 'ci'),
+        cache_asset_prefix=optional_text(ci, 'cache_asset_prefix', 'ci'),
+        runtime_asset_prefix=optional_text(ci, 'runtime_asset_prefix', 'ci'),
+        sdk_asset_prefix=optional_text(ci, 'sdk_asset_prefix', 'ci'),
+        native_workflow=text_field(ci, 'native_workflow', 'ci'),
+        native_job=text_field(ci, 'native_job', 'ci'),
+        toolchain_repository=text_field(toolchain, 'repository', 'toolchain'),
+        toolchain_asset_prefix=text_field(toolchain, 'asset_prefix', 'toolchain'),
+        pinned_cache_revisions=optional_text(ci, 'pinned_cache_revisions', 'ci'),
+        test_areas_file=optional_text(tests, 'areas_file', 'tests'),
+        test_name_prefixes=text_list(tests, 'name_prefixes', 'tests'),
+        linux_packages=package_profiles(packages),
+        has_state_machines=has_state_machines,
+        first_party_dirs=text_list(machines, 'first_party_dirs', 'state_machines'),
+        vocabulary_headers=text_list(machines, 'vocabulary_headers', 'state_machines'),
+        state_machine_areas=state_machine_areas(machines.get('areas')),
+        full_tree_triggers=text_list(machines, 'full_tree_triggers', 'state_machines'),
+        reviewed_shapes=reviewed_shapes(machines.get('reviewed_shapes', [])),
+        expected_compile_failures=expected_compile_failures(machines.get('expected_compile_failures', [])),
+        loop_branch_decisions=loop_branch_decisions(document.get('loop_branches')),
+        const_restrict_decisions=decisions_path(document.get('const_restrict'), 'const_restrict'),
+        copies_decisions=decisions_path(document.get('copies'), 'copies'),
+        configure_variable_names=text_list(build, 'configure_variables', 'build'),
+        cache_profile=text_field(cache, 'profile', 'cache_manifest'),
+        native_options=native_options,
+        platform_native_options=platform_option_tables(cache.get('platform_options', {}), native_options),
+        checkpoint=checkpoint_table(document.get('checkpoint')),
+        bootstrap=bootstrap_table(document.get('bootstrap'), text_field(product, 'name', 'project'),
+                                  text_field(product, 'repository', 'project')))
+    if project.bootstrap is not None and project.bootstrap.linux_packages is not None:
+        if project.bootstrap.linux_packages not in project.linux_packages:
+            raise ValueError('bootstrap.linux_packages names no [linux_packages] profile: '
+                             + project.bootstrap.linux_packages)
+    return project
+
+
+def load(path: Path) -> Project:
+    with path.open('rb') as stream:
+        document: dict[str, Any] = tomllib.load(stream)
+    project: Project = parse(document, path.resolve())
+    return project
+
+
+def project_path() -> Path:
+    named: str = os.environ.get(PROJECT_VARIABLE, '')
+    if named:
+        return Path(named)
+    candidate: Path = workspace_root() / DEFAULT_PROJECT_NAME
+    if candidate.is_file():
+        return candidate
+    raise RuntimeError('No project file: set ' + PROJECT_VARIABLE + ' or put ' + DEFAULT_PROJECT_NAME
+                       + ' at the workspace root (' + str(workspace_root()) + ')')
+
+
+_loaded: Project | None = None
+
+
+def current() -> Project:
+    """The project the tools run for, loaded once per process."""
+    global _loaded
+    if _loaded is None:
+        _loaded = load(project_path())
+    return _loaded
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__,
+                                                              formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands: argparse._SubParsersAction = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('show', help='print the loaded project')
+    packages: argparse.ArgumentParser = commands.add_parser('linux-packages', help='print a package profile')
+    packages.add_argument('profile')
+    variable: argparse.ArgumentParser = commands.add_parser('variable', help='print <env_prefix>_NAME')
+    variable.add_argument('name')
+    args: argparse.Namespace = parser.parse_args(argv)
+    project: Project = current()
+    if args.command == 'show':
+        print(project)
+        return 0
+    if args.command == 'variable':
+        print(project.variable(args.name))
+        return 0
+    if args.profile not in project.linux_packages:
+        expected: str = ' or '.join(sorted(project.linux_packages))
+        print('unknown package profile: ' + args.profile + ' (expected ' + expected + ')', file=sys.stderr)
+        return 2
+    print(' '.join(project.linux_packages[args.profile]))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

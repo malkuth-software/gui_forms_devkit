@@ -1,0 +1,220 @@
+# GUI.Forms' project file (harness/project.py reads it).
+#
+# Every value reproduces a name GUI.Forms' CI used before the harness
+# existed, so its caches, receipts and toolchain releases stay valid:
+# harness/test_project_names.py checks the derived names byte for byte.
+# Changing a value starts a new history; change one deliberately.
+
+schema = 1
+
+[project]
+name = "gui_forms"
+repository = "malkuth-software/gui_forms"
+# The checkout under the workspace root (gui_forms/), and its build trees
+# .build/native-<platform>/gui-forms/ (-sanitize, -sdk).
+source_dir = "gui_forms"
+build_name = "gui-forms"
+# GUI_FORMS_LLVM_RUNTIME, GUI_FORMS_PLATFORM, GUI_FORMS_COMPILER_ID, ...
+env_prefix = "GUI_FORMS"
+
+[ci]
+# gui-validated-, gui-inputs-, gui-tree-, gui-sanitize-ccache-linux-x64.
+artifact_prefix = "gui-"
+# gui-forms-cache-<platform>.tar.gz
+cache_asset_prefix = "gui-forms-cache-"
+# Beside each cache in its build-<sha> release (publish_cache.py): the C++
+# runtime the objects were compiled against, gui-forms-runtime-<platform>.tar.gz
+# (Windows: .ci/own-runtime; Linux: .build/toolchain/<static runtime>; macOS
+# keeps its runtime inside the cache archive), and the installed SDK,
+# gui-forms-sdk-<platform>.tar.gz, that an application links instead of
+# compiling GUI.Forms.
+runtime_asset_prefix = "gui-forms-runtime-"
+sdk_asset_prefix = "gui-forms-sdk-"
+native_workflow = ".github/workflows/native.yml"
+native_job = "native"
+pinned_cache_revisions = "packaging/pinned_cache_revisions.json"
+
+[toolchain]
+# The Windows CLANG64 toolchain is published as releases of the running
+# repository: gui-forms-toolchain-windows-x64.tar.zst and its manifest,
+# which records this repository as its publisher.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+areas_file = "tools/test_areas.json"
+# tests/X.cpp names the tests X, gui_forms_X and gui_drawing_X.
+name_prefixes = ["gui_forms_", "gui_drawing_"]
+
+# install_linux_ci_packages.sh <profile>: toolkit (native and sanitizer jobs)
+# or programs (release.yml).
+#
+# xcompmgr: a compositing manager for stage T5's X11 compositor probe and
+# gate under Xvfb (owner decision T5-Q12). weston and xwayland: a headless
+# Wayland compositor and its X server, for the same probe under XWayland
+# (owner, 2026-10-25; Linux CI only).
+# llvm-22-dev and libclang-22-dev: LLVM's and Clang's headers for the
+# gui_forms Clang plugin, so the native and sanitizer jobs verify effect
+# programs instead of building them unverified (C-10, owner 2026-11-08;
+# GUI.Forms' ci_build.py sets GUI_FORMS_EFFECT_VERIFY_REQUIRED on Linux CI).
+[linux_packages.toolkit]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "llvm-22-dev", "libclang-22-dev", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth", "xcompmgr", "weston", "xwayland", "xdg-utils", "dbus", "at-spi2-core",
+    "python3-gi", "gir1.2-atspi-2.0",
+]
+
+[linux_packages.programs]
+extends = "toolkit"
+packages = ["xdotool", "patchelf", "dpkg-dev"]
+
+[state_machines]
+first_party_dirs = [
+    "include", "src", "demo", "tests", "examples", "tools",
+    "file_manager_demoboard", "stx_vorbis", "stx_zlib", "stx_png", "stx_conv",
+    "fuzz",
+]
+# The atom vocabulary: PartRole, AnatomyState, SemanticRole, PartMark,
+# ControlVisualRole and their neighbours.
+vocabulary_headers = [
+    "include/gui_forms/anatomy/types/anatomy_types.hpp",
+    "include/gui_forms/semantics/types/semantic_types.hpp",
+    "include/gui_forms/theme/part_painting/part_painting.hpp",
+    "include/gui_forms/theme/types/theme_types.hpp",
+]
+# Owning areas by path prefix, most specific first (AGENTS.md ownership).
+areas = [
+    ["include/gui_forms/controls/", "controls"],
+    ["src/controls/", "controls"],
+    ["demo/", "controls"],
+    ["src/host/windows/", "host-windows"],
+    ["src/host/macos/", "host-macos"],
+    ["src/host/linux/", "host-linux"],
+    ["src/host/", "host"],
+    ["src/render/", "render"],
+    ["src/abi/", "c-abi"],
+    ["src/audio/", "audio"],
+    ["src/runtime/", "runtime"],
+    ["src/core/", "core"],
+    ["include/", "core"],
+    ["tests/", "tests"],
+    ["file_manager_demoboard/", "demoboard"],
+    ["stx_vorbis/", "stx_vorbis"],
+    ["stx_zlib/", "stx_zlib"],
+    ["stx_png/", "stx_png"],
+    ["stx_conv/", "stx_conv"],
+    ["fuzz/", "fuzz"],
+    ["examples/", "examples"],
+    ["tools/", "tools"],
+]
+# A change to one of these can change any verdict: a changed-code run checks
+# the full tree. GUI.Forms' tools/check_*.py are forwarding shims to this
+# harness, so a change to the checkers reaches GUI.Forms as a harness.lock
+# bump (tools/harness_link.py is how the shims reach it); check_state_machines
+# widens on such a bump only when the checker's own files differ between the
+# two pins. The gate's workflow is not listed: its configure flags reach the
+# unit cache's key through the compile commands.
+full_tree_triggers = [
+    "tools/check_state_machines.py",
+    "tools/check_house_style.py",
+    "tools/harness_link.py",
+]
+# Units meant not to compile, each [glob, reason]: the gate runs them without
+# analysing them and fails when one compiles. The tests/effect_pass reject
+# cases exist only with GUI_FORMS_EFFECTS_VERIFIED (the M4's verified tree and
+# Linux CI), compiled with the effect-pass Clang plugin, which refuses each one
+# by design (cmake/check_effect_pass.cmake checks the refusal). passes,
+# signal_passes and unverified compile, so they are not listed.
+expected_compile_failures = [
+    ["tests/effect_pass/while_loop.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/unbounded_for.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/loop_variable_written.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/not_equal_past_limit.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/not_equal_below_limit.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/recursion.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/virtual_call.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/function_pointer.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/allocation.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/global_write.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/cmath_call.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/opaque_call.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/pointer_state.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/oversized_state.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/over_budget.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/signal_over_budget.cpp", "signal program refusal case (// expect: reject)"],
+    ["tests/effect_pass/signal_cmath_call.cpp", "signal program refusal case (// expect: reject)"],
+]
+# C3 records reviewed and kept, each [path, record, reason].
+reviewed_shapes = [
+    ["include/gui_forms/typography/types/typography_types.hpp", "ResolvedTextLayout",
+     "design_metrics follows the measuring engine, not the status grade: a broad-form case, kept for the owner's decision"],
+]
+
+[loop_branches]
+# check_loop_branches.py (E2): the recorded keep, hoist and false_shape
+# decisions, maintained with the repairs in the GUI.Forms checkout.
+decisions = "tools/loop_branch_decisions.json"
+
+[build]
+# GUI_FORMS_SYSTEM_BUILD_TOOLS changes what a configure records
+# (ci_build_steps.configure_record); GUI_FORMS_LLVM_RUNTIME always does.
+configure_variables = ["SYSTEM_BUILD_TOOLS"]
+
+# cache_manifest.py records these in cache-manifest.json beside the cache.
+[cache_manifest]
+profile = "native Release plus separately tested development text/host profiles"
+
+# The native job's build options, in the order the manifest lists them.
+# harfbuzz: ADR-004, every host draws text with the shared HarfBuzz/FreeType engine.
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+pic = true
+audio = true
+tests = true
+gallery = false
+skia = true
+harfbuzz = true
+
+# checkpoint/checkpoint.py: the coordinator's integration workspace (run with
+# HARNESS_WORKSPACE set to it, D:/gui_forms_int today) holds the integration
+# tree, a dedicated clone marked by `checkpoint init`, and build.sh, which
+# configures and builds the tree and, with `all`, runs the whole ctest suite.
+[checkpoint]
+tree = "gui_forms"
+verify = ["sh", "build.sh", "all"]
+base = "main"
+remote = "origin"
+branch_prefix = "checkpoint/"
+merge_method = "merge"
+
+# harness/bootstrap.py: the notes clone (main, plus the gui_forms side branch
+# as the worktree notes-gui_forms), the in-house projects repository, and the
+# smoke build: ci_build.py --install-only, a consumer's smoke build (it
+# builds, installs and checks the SDK and packs no test cache; the tests and
+# ci_build's former --tests moved to malkuth-software/gui_forms_tests).
+# {python} is the interpreter running the bootstrap.
+[bootstrap]
+notes_repository = "malkuth-software/notes"
+notes_branch = "gui_forms"
+projects_repository = "malkuth-software/projects"
+smoke = ["{python}", "gui_forms/tools/ci_build.py", "--install-only"]
+# Every platform builds the stx package where CI keeps it: its include
+# directories enter every compile's arguments relative to CCACHE_BASEDIR, so
+# the build tree's default stx-package/ misses every cached object (Windows
+# field test, 2026-11-24).
+environment = { GUI_FORMS_STX_PACKAGE_DIR = "{workspace}/.ci/stx-package" }
+
+# Windows, as native-platform.yml builds it: STXlib's own runtime and libc++
+# (tools/own_runtime.py build prints the three GUI_FORMS_*_PREFIX/SOURCE
+# settings the toolchain reads; it reuses the runtime archive the cache step
+# restored when its stamp matches).
+[bootstrap.windows-x64]
+prepare = [["{python}", "gui_forms/tools/own_runtime.py", "build", "--out", ".ci/own-runtime", "--jobs", "4"]]
+
+[const_restrict]
+# harness/check_const_restrict.py (E3): the recorded restrict decisions,
+# maintained with the restrict changes in the GUI.Forms checkout.
+decisions = "tools/const_restrict_decisions.json"
