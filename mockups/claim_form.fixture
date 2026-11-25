@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The claim form's sample data (claim_form.form). -->
 <fixture xmlns="urn:gui-forms:fixture:1">
-  <value name="holder_name" value="Ada Marsh"/>
+  <!-- A text property binds a field of a record set (form_binding_invalid
+       otherwise): the claim's own text is one row. -->
+  <records name="claim" columns="holder_name incident_place incident_account status">
+    <row values="'Ada Marsh' '14 Quay Street, Harbourside' 'A pipe burst in the loft overnight and water came through the bedroom ceiling.' 'Draft: not yet submitted'"/>
+  </records>
   <value name="contact_by_phone" value="true"/>
-  <value name="incident_place" value="14 Quay Street, Harbourside"/>
-  <value name="incident_account" value="A pipe burst in the loft overnight and water came through the bedroom ceiling."/>
   <value name="police_report" value="false"/>
-  <value name="status" value="Draft: not yet submitted"/>
 
   <records name="regions" columns="region" shown-in="claim.holder.region">
     <row values="North"/>

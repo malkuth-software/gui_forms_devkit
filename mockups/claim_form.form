@@ -23,7 +23,7 @@
             placeholder-text="As on the policy"
             bounds="160 16 300 28"
             tab-index="0">
-          <bind property="text" to="holder_name"/>
+          <bind property="text" to="claim" field="holder_name"/>
         </text-box>
 
         <label id="claim.holder.policy.caption" text="Policy number" bounds="16 60 140 24"/>
@@ -87,7 +87,7 @@
             accessible-name="Where it happened"
             bounds="160 96 420 28"
             tab-index="2">
-          <bind property="text" to="incident_place"/>
+          <bind property="text" to="claim" field="incident_place"/>
         </text-box>
 
         <label id="claim.incident.account.caption" text="What happened" bounds="16 140 140 24"/>
@@ -96,7 +96,7 @@
             multiline="true"
             bounds="160 136 420 120"
             tab-index="3">
-          <bind property="text" to="incident_account"/>
+          <bind property="text" to="claim" field="incident_account"/>
         </text-box>
 
         <check-box id="claim.incident.police"
@@ -129,7 +129,7 @@
     <label id="claim.status"
         classes="status"
         bounds="16 470 300 24">
-      <bind property="text" to="status"/>
+      <bind property="text" to="claim" field="status"/>
     </label>
     <button id="claim.check" text="Check" bounds="340 466 88 32" tab-index="1"
         on-click="check_claim"/>
