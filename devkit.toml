@@ -1,0 +1,17 @@
+# gui_forms_devkit's GUI.Forms pin: the major only, with a floor.
+#
+# The devkit builds against the newest green GUI.Forms build within the major
+# that is at least `minimum` (harness/harness/resolve_gui_forms.py). GUI.Forms
+# refuses breaking changes within a major from 1.0, so any such build has the
+# API the devkit uses. Raise `minimum` in the same commit that first uses newer
+# API; the pull-request floor row builds against it.
+[gui_forms]
+repository = "malkuth-software/gui_forms"
+major = 1
+minimum = "1.0.3"
+# "main": the newest build-<sha> pre-release carrying every platform's SDK and
+# cache; "stable": the newest v<major>.* release.
+channel = "main"
+# The platforms whose SDK and cache a candidate must carry (a platform publishes
+# only when its native job passed, so all present means green).
+platforms = ["linux-x64", "linux-arm64", "macos-arm64", "windows-x64"]
