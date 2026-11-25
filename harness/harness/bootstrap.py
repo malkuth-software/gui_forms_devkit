@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set up a workspace for one product: its checkout, the notes, the toolchain, the caches, a smoke build.
+"""Set up a workspace for one product: its checkout, the toolchain, the caches, a smoke build.
 
 bootstrap.sh (and bootstrap.ps1, which finds Git Bash) runs this with a
 Python of 3.11 or later:
@@ -7,6 +7,13 @@ Python of 3.11 or later:
     sh bootstrap.sh --workspace DIR --project NAME [--in-house] [--dry-run]
                     [--platform P] [--no-restore] [--no-smoke]
                     [--github-base URL] [--project-file PATH]
+
+bootstrap.sh also runs the devkit's local commands (bootstrap.sh explains
+them): `new-app NAME [DIR]` (new_local_app.py) and `own-runtime`
+(own_runtime_local.py).
+
+Consumer first: without --in-house the bootstrap clones the product only,
+never the in-house notes or projects repositories.
 
 NAME selects projects/NAME.toml in this repository (--project-file names
 another file). In order:
@@ -17,14 +24,16 @@ another file). In order:
    commits it records. When it has a harness.lock,
    DIR/template_harness becomes that commit (harness/lock.py), and the
    restore and the smoke build use that harness and its projects/NAME.toml;
-2. the notes: <github>/<notes_repository>.git cloned into DIR/notes with
-   main checked out, and the project's notes branch (notes_branch, by
-   default the project name) as the worktree DIR/notes-<branch>;
+2. with --in-house only, when the project declares notes_repository: the
+   notes, <github>/<notes_repository>.git cloned into DIR/notes with main
+   checked out, and the project's notes branch (notes_branch, by default
+   the project name) as the worktree DIR/notes-<branch>;
 3. with --in-house only: <github>/<projects_repository>.git into
    DIR/projects. It is private; without access the bootstrap stops and
    says so;
 4. the toolchain, the compiler cache and the C++ runtime, through
-   harness/restore_local.py (skipped with --no-restore; the cache also when
+   harness/restore_local.py (skipped with --no-restore; only the kinds
+   [bootstrap] restore names when it names any; the cache also when
    the project publishes none, having no ci.cache_asset_prefix; the runtime
    restored with the cache or built, on macOS and Linux); then CI's build environment
    (restore_local.py env: the ccache settings, CI's locale, the project's
@@ -35,8 +44,8 @@ another file). In order:
 5. the project's [bootstrap] smoke command, run from DIR (skipped with
    --no-smoke, or when the project names none).
 
-With the product at the workspace root, template_harness/, notes/,
-notes-<branch>/, projects/ and the CI state (.build/, .ccache/, .ci/) all
+With the product at the workspace root, template_harness/, (in-house)
+notes/, notes-<branch>/ and projects/, and the CI state (.build/, .ccache/, .ci/) all
 sit inside the product's checkout. After the clones the bootstrap asks
 git whether the checkout ignores each of them (git check-ignore) and warns
 about any it does not: the product's .gitignore should list them
@@ -79,9 +88,10 @@ PYTHON_ARGUMENT: str = '{python}'
 # The pinned harness's directory in the workspace, beside the product (owner decision 2).
 HARNESS_DIRECTORY: str = 'template_harness'
 # What a product at the workspace root must ignore: the directories the
-# bootstrap and the tools put there (projects/ only with --in-house), including
-# restore_local.py's TOOLCHAIN_DIRECTORY and DOWNLOAD_DIRECTORY.
-ROOT_LAYOUT_ENTRIES: tuple[str, ...] = (HARNESS_DIRECTORY + '/', 'notes/', '.build/', '.ccache/', '.ci/',
+# bootstrap and the tools put there (the notes and projects/ only with
+# --in-house), including restore_local.py's TOOLCHAIN_DIRECTORY and
+# DOWNLOAD_DIRECTORY.
+ROOT_LAYOUT_ENTRIES: tuple[str, ...] = (HARNESS_DIRECTORY + '/', '.build/', '.ccache/', '.ci/',
                                         '.toolchain/', '.bootstrap/')
 # Written by restore_local.py (build_environment's records).
 TOOLCHAIN_PATH_RECORD: str = build_environment.TOOLCHAIN_PATH_RECORD
@@ -249,13 +259,42 @@ def product_checkout(plan: Plan) -> Path:
     return checkout
 
 
+def clones_notes(plan: Plan) -> bool:
+    """Whether this run clones the notes: --in-house, and the project declares notes_repository."""
+    result: bool = (plan.in_house and plan.product.bootstrap is not None
+                    and plan.product.bootstrap.notes_repository is not None)
+    return result
+
+
+def restore_kinds(plan: Plan, harness: PinnedHarness) -> list[str]:
+    """The restore_local.py kinds this run restores, in order: [bootstrap] restore when it names
+    any, else every kind that applies (the cache when the project publishes one, the runtime when
+    the pinned harness restores it)."""
+    kinds: list[str] = ['toolchain']
+    if harness.product.cache_asset_prefix is not None:
+        kinds.append('cache')
+    else:
+        say('Cache restore skipped (the project publishes no compiler caches: no ci.cache_asset_prefix)')
+    if (harness.root / 'harness' / 'build_environment.py').is_file():
+        # The pinned harness restores or builds the C++ runtime (restore_local.py runtime).
+        kinds.append('runtime')
+    named: tuple[str, ...] | None = None if harness.product.bootstrap is None else harness.product.bootstrap.restore
+    if named is not None:
+        skipped: list[str] = [kind for kind in kinds if kind not in named]
+        if skipped:
+            say('Restore of ' + ', '.join(skipped) + ' skipped (the project\'s [bootstrap] restore names '
+                + (', '.join(named) or 'none') + ')')
+        kinds = [kind for kind in kinds if kind in named]
+    return kinds
+
+
 def unignored_entries(plan: Plan) -> list[str]:
     """The workspace entries a root-layout product's checkout does not ignore (empty for any other layout)."""
     if not plan.product.at_workspace_root() or not (plan.workspace / '.git').exists():
         return []
     entries: list[str] = list(ROOT_LAYOUT_ENTRIES)
-    if plan.product.bootstrap is not None:
-        entries.append('notes-' + plan.product.bootstrap.notes_branch + '/')
+    if clones_notes(plan):
+        entries.extend(['notes/', 'notes-' + plan.product.bootstrap.notes_branch + '/'])
     if plan.in_house:
         entries.append('projects/')
     unignored: list[str] = []
@@ -399,9 +438,13 @@ def bootstrap(plan: Plan) -> None:
                                'the product')
     sync_submodules(plan, product_checkout(plan), settled)
     harness: PinnedHarness = pin_harness(plan)
-    notes: Path = plan.workspace / 'notes'
-    sync_clone(plan, repository_url(plan.github, product.bootstrap.notes_repository), notes, 'main', 'the notes')
-    sync_notes_worktree(plan, notes, product.bootstrap.notes_branch)
+    if clones_notes(plan):
+        notes: Path = plan.workspace / 'notes'
+        sync_clone(plan, repository_url(plan.github, product.bootstrap.notes_repository), notes, 'main',
+                   'the notes')
+        sync_notes_worktree(plan, notes, product.bootstrap.notes_branch)
+    elif plan.in_house:
+        say('Notes skipped (the project declares no notes_repository)')
     if plan.in_house:
         projects_url: str = repository_url(plan.github, product.bootstrap.projects_repository)
         try:
@@ -412,16 +455,8 @@ def bootstrap(plan: Plan) -> None:
     warn_unignored(plan)
     environment: dict[str, str] = step_environment(plan, harness)
     if plan.restore:
-        kinds: list[str] = ['toolchain']
-        if harness.product.cache_asset_prefix is not None:
-            kinds.append('cache')
-        else:
-            say('Cache restore skipped (the project publishes no compiler caches: no ci.cache_asset_prefix)')
-        if (harness.root / 'harness' / 'build_environment.py').is_file():
-            # The pinned harness restores or builds the C++ runtime (restore_local.py runtime).
-            kinds.append('runtime')
         kind: str
-        for kind in kinds:
+        for kind in restore_kinds(plan, harness):
             command: list[str] = [sys.executable, '-B', str(harness.root / 'harness' / 'restore_local.py'), kind,
                                   '--platform', plan.platform]
             change(plan, command, 'restoring the ' + kind, plan.workspace, environment)
@@ -447,7 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--workspace', required=True, type=Path)
     parser.add_argument('--project', default='', help='projects/<NAME>.toml in this repository')
     parser.add_argument('--project-file', type=Path, help='a project file elsewhere, instead of --project')
-    parser.add_argument('--in-house', action='store_true', help='also clone the private projects repository')
+    parser.add_argument('--in-house', action='store_true',
+                        help='also clone the in-house notes (when declared) and the private projects repository')
     parser.add_argument('--dry-run', action='store_true', help='print every step; change nothing')
     parser.add_argument('--platform', choices=PLATFORMS, default='')
     parser.add_argument('--no-restore', action='store_true')

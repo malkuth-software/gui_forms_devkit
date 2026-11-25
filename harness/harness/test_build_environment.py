@@ -63,11 +63,17 @@ class BuildEnvironmentTests(unittest.TestCase):
         (runtime / build_environment.RUNTIME_MANIFEST).write_text('{}', encoding='utf-8')
         values: dict[str, str] = build_environment.build_environment(self.product, 'linux-x64', [])
         self.assertEqual(values[self.product.variable('LLVM_RUNTIME')], runtime.as_posix())
+        # What cmake/llvm22.cmake reads: <HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else HARNESS_LLVM_RUNTIME.
+        self.assertEqual(values['HARNESS_ENV_PREFIX'], self.product.env_prefix)
+        self.assertEqual(values[values['HARNESS_ENV_PREFIX'] + '_LLVM_RUNTIME'], runtime.as_posix())
+        self.assertEqual(values['HARNESS_LLVM_RUNTIME'], runtime.as_posix())
         second: Path = runtime.parent / 'other'
         second.mkdir()
         (second / build_environment.RUNTIME_MANIFEST).write_text('{}', encoding='utf-8')
         values = build_environment.build_environment(self.product, 'linux-x64', [])
         self.assertNotIn(self.product.variable('LLVM_RUNTIME'), values)
+        self.assertNotIn('HARNESS_LLVM_RUNTIME', values)
+        self.assertEqual(values['HARNESS_ENV_PREFIX'], self.product.env_prefix)
 
     def test_the_record_and_the_scripts_are_written_and_applied(self) -> None:
         values: dict[str, str] = build_environment.build_environment(self.product, 'windows-x64', [])

@@ -127,7 +127,10 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(status, 0, errors)
         self.assertIn('the product: its submodules are left as they are', output)
 
-    def test_a_fresh_workspace_gets_the_product_notes_and_smoke_build(self) -> None:
+    def make_projects_remote(self) -> None:
+        make_remote(self.github, 'malkuth-software/projects', {'main': 'tracks.md'})
+
+    def test_a_fresh_workspace_gets_the_product_and_smoke_build_and_no_in_house_repositories(self) -> None:
         status: int
         output: str
         errors: str
@@ -135,18 +138,60 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(status, 0, errors)
         self.assertEqual(git(self.workspace / 'gui_forms', 'branch', '--show-current'), 'main')
         self.assertTrue((self.workspace / 'gui_forms' / 'product.txt').is_file())
+        smoke: list[str] = json.loads((self.workspace / 'smoke.json').read_text(encoding='utf-8'))
+        self.assertEqual(smoke, [str(self.workspace), str(self.project_file)])
+        self.assertIn('Toolchain and cache restore skipped', output)
+        # Consumer first: the notes and projects come only with --in-house.
+        self.assertFalse((self.workspace / 'notes').exists())
+        self.assertFalse((self.workspace / 'notes-gui_forms').exists())
+        self.assertFalse((self.workspace / 'projects').exists())
+
+    def test_in_house_adds_the_notes_and_their_branch(self) -> None:
+        self.make_projects_remote()
+        status: int
+        output: str
+        errors: str
+        status, output, errors = self.run_bootstrap('--in-house', '--no-restore', '--no-smoke')
+        self.assertEqual(status, 0, errors)
         self.assertEqual(git(self.workspace / 'notes', 'branch', '--show-current'), 'main')
         worktree: Path = self.workspace / 'notes-gui_forms'
         self.assertEqual(git(worktree, 'branch', '--show-current'), 'gui_forms')
         self.assertTrue((worktree / 'gui_forms.md').is_file())
         self.assertEqual(git(worktree, 'rev-parse', '--abbrev-ref', '@{upstream}'), 'origin/gui_forms')
-        smoke: list[str] = json.loads((self.workspace / 'smoke.json').read_text(encoding='utf-8'))
-        self.assertEqual(smoke, [str(self.workspace), str(self.project_file)])
-        self.assertIn('Toolchain and cache restore skipped', output)
-        self.assertFalse((self.workspace / 'projects').exists())
+        self.assertTrue((self.workspace / 'projects' / 'tracks.md').is_file())
+
+    def test_a_project_declaring_no_notes_gets_none_even_in_house(self) -> None:
+        text: str = project_text('gui_forms')
+        line: str = 'notes_repository = "malkuth-software/notes"\n'
+        self.assertEqual(text.count(line), 1)
+        self.project_file.write_text(text.replace(line, ''), encoding='utf-8')
+        self.make_projects_remote()
+        status: int
+        output: str
+        errors: str
+        status, output, errors = self.run_bootstrap('--in-house', '--no-restore', '--no-smoke')
+        self.assertEqual(status, 0, errors)
+        self.assertIn('Notes skipped (the project declares no notes_repository)', output)
+        self.assertFalse((self.workspace / 'notes').exists())
+        self.assertTrue((self.workspace / 'projects' / 'tracks.md').is_file())
+
+    def test_the_restore_runs_only_the_kinds_the_project_names(self) -> None:
+        text: str = project_text('gui_forms')
+        self.assertEqual(text.count(SMOKE + '\n'), 1)
+        self.project_file.write_text(text.replace(SMOKE + '\n', SMOKE + '\nrestore = ["toolchain"]\n'),
+                                     encoding='utf-8')
+        status: int
+        output: str
+        errors: str
+        status, output, errors = self.run_bootstrap('--dry-run', '--platform', 'linux-x64')
+        self.assertEqual(status, 0, errors)
+        self.assertRegex(output, r"restore_local\.py'? toolchain --platform linux-x64")
+        self.assertNotRegex(output, r"restore_local\.py'? (cache|runtime) --platform")
+        self.assertIn('Restore of cache, runtime skipped', output)
 
     def test_a_rerun_updates_instead_of_cloning(self) -> None:
-        self.assertEqual(self.run_bootstrap('--no-restore', '--no-smoke')[0], 0)
+        self.make_projects_remote()
+        self.assertEqual(self.run_bootstrap('--in-house', '--no-restore', '--no-smoke')[0], 0)
         (self.workspace / 'gui_forms' / 'local.txt').write_text('untracked\n', encoding='utf-8')
         commit_file(self.product_seed, 'later.txt', 'later\n')
         git(self.product_seed, 'push', '-q', 'origin', 'main')
@@ -156,7 +201,7 @@ class BootstrapTests(unittest.TestCase):
         status: int
         output: str
         errors: str
-        status, output, errors = self.run_bootstrap('--no-restore', '--no-smoke')
+        status, output, errors = self.run_bootstrap('--in-house', '--no-restore', '--no-smoke')
         self.assertEqual(status, 0, errors)
         self.assertNotIn('cloning', output)
         self.assertIn('the product: updating', output)
@@ -226,7 +271,7 @@ class BootstrapTests(unittest.TestCase):
         status: int
         output: str
         errors: str
-        status, output, errors = self.run_bootstrap('--no-restore', '--no-smoke')
+        status, output, errors = self.run_bootstrap('--in-house', '--no-restore', '--no-smoke')
         self.assertEqual(status, 1)
         self.assertIn('no branch absent', errors)
 

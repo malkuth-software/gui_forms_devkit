@@ -111,10 +111,16 @@ class BootstrapPlatform:
 @dataclass(frozen=True)
 class BootstrapTable:
     """[bootstrap], for harness/bootstrap.py: the notes and projects repositories and the smoke build."""
-    notes_repository: str
+    # The in-house notes repository (owner/name), cloned with --in-house only; None: the project
+    # declares no notes (a consumer's project, the devkit's own).
+    notes_repository: str | None
     # The notes side branch checked out as a worktree beside notes/ (default: the project name).
     notes_branch: str
     projects_repository: str
+    # The restore_local.py kinds the bootstrap runs, in order (toolchain, cache, runtime); None:
+    # every one that applies. The devkit names only the toolchain: its smoke build resolves and
+    # fetches the SDK, restores the runtime asset and its own cache (devkit_build.py).
+    restore: tuple[str, ...] | None
     # Run from the workspace root; the argument {python} becomes the running interpreter.
     smoke: tuple[str, ...]
     # The [linux_packages] profile a workspace installs on Linux (Project.workspace_linux_profile);
@@ -546,9 +552,24 @@ def environment_table(table: Any, where: str) -> tuple[tuple[str, str], ...]:
     return tuple(environment)
 
 
+# The kinds [bootstrap] restore may name (restore_local.py's commands, env aside).
+RESTORE_KINDS: tuple[str, ...] = ('toolchain', 'cache', 'runtime')
+
+
+def restore_kinds(value: dict[str, Any]) -> tuple[str, ...] | None:
+    if 'restore' not in value:
+        return None
+    kinds: tuple[str, ...] = text_list(value, 'restore', 'bootstrap')
+    unknown: list[str] = [kind for kind in kinds if kind not in RESTORE_KINDS]
+    if unknown:
+        raise ValueError('bootstrap.restore names unknown kinds: ' + ', '.join(unknown) + ' (expected '
+                         + ', '.join(RESTORE_KINDS) + ')')
+    return kinds
+
+
 def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | None:
-    """Defaults: <owner>/notes, the project name as the notes branch, <owner>/projects, no smoke build,
-    no named Linux package profile, no platform preparation, no environment."""
+    """Defaults: no notes, the project name as the notes branch, <owner>/projects, every restore that
+    applies, no smoke build, no named Linux package profile, no platform preparation, no environment."""
     if value is None:
         return None
     if type(value) is not dict:
@@ -563,9 +584,10 @@ def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | 
         if platform in value:
             platforms[platform] = bootstrap_platform(value[platform], platform)
     table: BootstrapTable = BootstrapTable(
-        notes_repository=named_text(value, 'notes_repository', 'bootstrap', owner + '/notes'),
+        notes_repository=optional_text(value, 'notes_repository', 'bootstrap'),
         notes_branch=named_text(value, 'notes_branch', 'bootstrap', name),
         projects_repository=named_text(value, 'projects_repository', 'bootstrap', owner + '/projects'),
+        restore=restore_kinds(value),
         smoke=smoke,
         linux_packages=optional_text(value, 'linux_packages', 'bootstrap'),
         platforms=platforms,
