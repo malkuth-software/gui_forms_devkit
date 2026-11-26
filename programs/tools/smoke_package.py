@@ -16,7 +16,7 @@ program prints "GUI.Forms window smoke passed" before exiting 0. A launch
 passes when the exit code is 0, the pass line was printed, the receipt reports
 at least one presented frame and the renderer loaded its bundled fonts.
 
-Every extracted program is also launched with --mcp (tools/check_mcp_launch.py):
+Every extracted program is also launched with --mcp-fcfs (tools/check_mcp_launch.py):
 it must answer initialize and tools/list, and exit once its input closes.
 
 Results are written to smoke-<platform>.json beside the packages receipt and
@@ -175,10 +175,10 @@ class Smoke:
                             stdout_lines[-20:], stderr_lines[-20:])
 
     def serve_mcp(self, record: dict[str, Any], executable: Path, source: str) -> LaunchResult:
-        """Launch the program with --mcp and check that it serves MCP (tools/check_mcp_launch.py)."""
-        arguments = ["--mcp"]
+        """Launch the program with --mcp-fcfs and check that it serves MCP (tools/check_mcp_launch.py)."""
+        arguments = ["--mcp-fcfs"]
         if self.dry_run:
-            self.log(f"    would check: {executable} --mcp")
+            self.log(f"    would check: {executable} --mcp-fcfs")
             return LaunchResult(record["id"], source, str(executable), arguments, True, True, 0, False, None, 0.0, "dry run")
         started = time.monotonic()
         # Every packaged program opts into the library allocator
@@ -253,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
             folder = record["install"]["macos_app"] if platform.startswith("macos") else record["install"]["folder"]
             results.append(smoke.launch(record, extracted / folder / record["executable"], "archive"))
             print(f"    {'PASS' if results[-1].passed else 'FAIL'}: {results[-1].detail}")
-            results.append(smoke.serve_mcp(record, extracted / folder / record["executable"], "archive --mcp"))
+            results.append(smoke.serve_mcp(record, extracted / folder / record["executable"], "archive --mcp-fcfs"))
             print(f"    {'PASS' if results[-1].passed else 'FAIL'}: {results[-1].detail}")
             installer_name = record["artifacts"].get("installer")
             if args.install and installer_name:
