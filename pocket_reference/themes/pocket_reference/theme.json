@@ -3,5 +3,5 @@
   "name": "pocket-reference",
   "version": "0.1.0",
   "engine": ">=0.3",
-  "sheet": {"path": "pocket_reference.theme.css", "sha256": "daaf1a48689e7a8ea21a8239f1e4cbd51ff464695c3148cedb7a092ccbc71d5e"}
+  "sheet": {"path": "pocket_reference.theme.css", "sha256": "f7cfa810faec512554642836eade1504ab77f7ec0bca1be47c98d8fa16ee81f6"}
 }

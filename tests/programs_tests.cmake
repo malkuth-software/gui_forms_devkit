@@ -89,6 +89,10 @@ endif()
 if(TARGET pocket-reference-page-tests)
     add_test(NAME pocket_reference_page_tests COMMAND pocket-reference-page-tests)
 endif()
+# Its round Back and Forward buttons: one continuous ring in every state.
+if(TARGET pocket-reference-nav-button-tests)
+    add_test(NAME pocket_reference_nav_button_tests COMMAND pocket-reference-nav-button-tests)
+endif()
 
 # Each program bundle or folder carries the font licences and no face file
 # (font pack stage 4).

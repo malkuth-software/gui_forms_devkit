@@ -101,9 +101,20 @@ add_executable(pocket-reference-page-tests tests/reference_page_tests.cpp src/re
 target_include_directories(pocket-reference-page-tests PRIVATE src)
 target_link_libraries(pocket-reference-page-tests PRIVATE GUIForms::Application stxlib::algorithms
                                                           pocket_reference_coder)
+# The round Back and Forward buttons drawn off screen in every state at 1x
+# and 2x through the program's theme: one continuous, concentric ring
+# inside the button.
+# It reads the theme header gui_forms_add_theme generates for the program
+# below (gui_forms_themes/pocket_reference_theme.hpp): one rule makes it,
+# so the suite waits for the program's target instead of adding another.
+add_executable(pocket-reference-nav-button-tests tests/nav_button_tests.cpp)
+target_link_libraries(pocket-reference-nav-button-tests PRIVATE GUIForms::Application)
+target_include_directories(pocket-reference-nav-button-tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/gui_forms_themes")
+add_dependencies(pocket-reference-nav-button-tests pocket-reference)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   enable_testing()
   add_test(NAME pocket_reference_page_tests COMMAND pocket-reference-page-tests)
+  add_test(NAME pocket_reference_nav_button_tests COMMAND pocket-reference-nav-button-tests)
 endif()
 
 # All the program's C++ allocations come from STXlib's allocator, as in

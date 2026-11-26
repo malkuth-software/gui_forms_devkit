@@ -5,6 +5,11 @@
 //   PocketReference --capture <file.png> [--size <w>x<h>] [--scale <s>]
 //                   [--page <id>] [--find <text>] [--filter <text>]
 //                   [--hover <target>] [--search <query>]
+//                   [--back-state <state>]
+//
+// --back-state draws only the Back button, with history behind it (so it
+// is enabled) and in one state: rest, hot, pressed, focused, focused-hot or
+// disabled (no history); with --scale 4 it is a close look at its ring.
 //
 // Without --pack, the pack beside the program (the bundle's Resources on
 // macOS). --capture draws the window off screen into a PNG and exits.
@@ -13,6 +18,7 @@
 #include "reference_page.hpp"
 
 #include <gui_forms/capture/offscreen_raster/offscreen_raster.hpp>
+#include <gui_forms/capture/specimen_states/specimen_states.hpp>
 
 #include <array>
 #include <cstdint>
@@ -43,6 +49,7 @@ struct Options final {
     std::string filter;
     std::string hover;
     std::string search;
+    std::string back_state;
     gf::Size size{1180.0, 748.0};
     double scale{1.0};
 };
@@ -86,6 +93,8 @@ Options read_options(int argc, char **argv) {
             options.hover = value;
         else if (name == "--search")
             options.search = value;
+        else if (name == "--back-state")
+            options.back_state = value;
         else if (name == "--scale")
             options.scale = std::stod(value);
         else if (name == "--size") {
@@ -101,8 +110,27 @@ Options read_options(int argc, char **argv) {
     return options;
 }
 
-// Draws the window off screen at the options' size and scale into a PNG.
-int capture(gf::Window &window, const Options &options) {
+// Shows `state` on the Back button for a capture: the presentation states
+// through show_specimen_state; "disabled" is the button with no history.
+void show_back_state(pocket_reference::ReferenceWindow &window, const std::string &state) {
+    std::vector<gf::AnatomyState> shown;
+    if (state == "hot")
+        shown.push_back(gf::AnatomyState::hot);
+    else if (state == "pressed")
+        shown.push_back(gf::AnatomyState::pressed);
+    else if (state == "focused")
+        shown = {gf::AnatomyState::focused, gf::AnatomyState::focus_visible};
+    else if (state == "focused-hot")
+        shown = {gf::AnatomyState::focused, gf::AnatomyState::focus_visible, gf::AnatomyState::hot};
+    else if (state != "rest" && state != "disabled")
+        throw std::runtime_error("--back-state takes rest, hot, pressed, focused, focused-hot or disabled.");
+    for (const gf::AnatomyState each : shown)
+        static_cast<void>(gf::show_specimen_state(*window.reference_back, each));
+}
+
+// Draws the window (or, with --back-state, its Back button) off screen at
+// the options' size and scale into a PNG.
+int capture(pocket_reference::ReferenceWindow &window, const Options &options) {
     gf::OffscreenRasterCreateResult made = gf::OffscreenRaster::create();
     std::unique_ptr<gf::OffscreenRaster> raster = made.take_raster();
     if (raster == nullptr)
@@ -111,7 +139,13 @@ int capture(gf::Window &window, const Options &options) {
     window.resize(options.size);
     gf::OffscreenCaptureOptions capture_options{};
     capture_options.scale = options.scale;
-    const std::optional<gf::WindowCapture> picture = attached.capture_window(capture_options);
+    std::optional<gf::WindowCapture> picture;
+    if (options.back_state.empty()) {
+        picture = attached.capture_window(capture_options);
+    } else {
+        capture_options.margin = 6.0;
+        picture = attached.capture_control(window.reference_back, capture_options);
+    }
     if (!picture.has_value())
         throw std::runtime_error("The capture failed.");
     std::vector<std::byte> png;
@@ -160,6 +194,13 @@ int main(int argc, char **argv) {
                 (*browser).show_find(options.find);
             if (!options.hover.empty())
                 (*browser).show_hover(options.hover);
+            if (!options.back_state.empty()) {
+                // History behind the page enables Back, except to show it
+                // disabled.
+                if (options.back_state != "disabled")
+                    (*browser).navigate("group/all", true);
+                show_back_state(*window, options.back_state);
+            }
             if (!options.capture.empty()) {
                 exit_code = capture(*window, options);
             } else {
