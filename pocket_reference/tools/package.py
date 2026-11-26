@@ -50,6 +50,21 @@ def macos_dependencies(image: Path) -> list[str]:
     return [line.strip().split(" (")[0] for line in lines]
 
 
+def macos_rpaths(image: Path) -> list[str]:
+    """The LC_RPATH entries of a Mach-O image, in order."""
+    lines = run(["otool", "-l", str(image)]).splitlines()
+    rpaths: list[str] = []
+    for index, line in enumerate(lines):
+        if line.strip() != "cmd LC_RPATH":
+            continue
+        for following in lines[index + 1:index + 4]:
+            words = following.split()
+            if len(words) >= 2 and words[0] == "path":
+                rpaths.append(words[1])
+                break
+    return rpaths
+
+
 def package_macos(build: Path, toolkit: Path, runtime: Path, output: Path, stem: str) -> Path:
     app = output / "PocketReference.app"
     shutil.copytree(build / "PocketReference.app", app, symlinks=True)
@@ -83,6 +98,14 @@ def package_macos(build: Path, toolkit: Path, runtime: Path, output: Path, stem:
             run(["install_name_tool", "-id", "@rpath/" + name, str(target)])
             seen.add(name)
             pending.append(target)
+    # The build links with an rpath into the build machine's runtime (its
+    # toolchain's lib); a shipped bundle keeps only rpaths relative to
+    # itself, so it finds the libraries above in Frameworks and names no
+    # build-machine path.
+    program = app / "Contents/MacOS/PocketReference"
+    for rpath in macos_rpaths(program):
+        if not rpath.startswith("@"):
+            run(["install_name_tool", "-delete_rpath", rpath, str(program)])
     for library in frameworks.iterdir():
         run(["codesign", "--force", "--sign", "-", str(library)])
     run(["codesign", "--force", "--deep", "--sign", "-", str(app)])
