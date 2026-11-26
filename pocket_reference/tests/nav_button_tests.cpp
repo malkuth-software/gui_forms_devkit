@@ -100,6 +100,23 @@ Darkest darkest_along(const gf::WindowCapture &capture, double centre, double an
     return found;
 }
 
+// The ink along the ray at `angle` between radii `from` and `to` (device
+// pixels): how much darker than the lighter of the two ends each sample
+// is, summed over the ray's length, in luminance levels x device pixels.
+double ink_across(const gf::WindowCapture &capture, double centre, double angle, double from, double to) {
+    const double step = 0.25;
+    const double inside = luminance(capture, centre + from * std::cos(angle), centre - from * std::sin(angle));
+    const double outside = luminance(capture, centre + to * std::cos(angle), centre - to * std::sin(angle));
+    const double base = std::max(inside, outside);
+    double ink = 0.0;
+    for (double radius = from; radius <= to; radius += step) {
+        const double value =
+            luminance(capture, centre + radius * std::cos(angle), centre - radius * std::sin(angle));
+        ink += std::max(0.0, base - value) * step;
+    }
+    return ink;
+}
+
 void check_ring(const gf::WindowCapture &capture, const ButtonState &state, double scale) {
     const std::string where = std::string(state.name) + " at " + std::to_string(scale) + "x: ";
     require(capture.pixel_width > 0U && capture.bgra.size() >= capture.pixel_width * capture.pixel_height * 4U,
@@ -110,23 +127,32 @@ void check_ring(const gf::WindowCapture &capture, const ButtonState &state, doub
     const double ring = button_size / 2.0 * scale;
     const double paper = luminance(capture, 1.0, 1.0);
 
-    // Continuous: the ring's darkest pixel across its width, sampled every
-    // 5.625 degrees, varies little round the circle (a bevel split into
-    // quadrants, or a dashed stroke, varies by far more).
-    std::vector<double> cores;
+    // Continuous: the ring's ink across its width, sampled every 5.625
+    // degrees, varies little round the circle. The ink, not the darkest
+    // pixel: at 1x the ring is one device pixel wide, so on the axes it
+    // covers one pixel fully and at the diagonals it is antialiased over
+    // two, each half covered; its peak darkness then depends on where the
+    // circle crosses the pixel grid (the first measure, which failed at 1x
+    // by 55 levels on a whole ring), while the ink a ray crosses does not.
+    // A bevel split into quadrants or a dashed stroke leaves angles with
+    // far less ink, or none.
+    std::vector<double> inks;
     for (std::size_t index = 0U; index < 64U; ++index) {
         const double angle = 2.0 * pi * static_cast<double>(index) / 64.0;
         // The shadow sits under the bottom only; keep to the upper half
         // and the sides for the ring's own colour.
         if (std::sin(angle) < -0.5)
             continue;
-        cores.push_back(darkest_along(capture, centre, angle, ring - 2.0 * scale, ring + 0.5 * scale).value);
+        inks.push_back(ink_across(capture, centre, angle, ring - 1.75 * scale, ring + 1.0 * scale));
     }
-    const double lightest = *std::max_element(cores.begin(), cores.end());
-    const double darkest = *std::min_element(cores.begin(), cores.end());
-    require(lightest - darkest <= 36.0, where + "the ring is not continuous (its core varies by " +
-                                            std::to_string(lightest - darkest) + ")");
-    require(paper - lightest >= 20.0, where + "the ring is missing somewhere round the circle");
+    const double most = *std::max_element(inks.begin(), inks.end());
+    const double least = *std::min_element(inks.begin(), inks.end());
+    // The border is about 120 levels darker than the paper over one unit:
+    // about 120 x scale of ink. A third of that is the loss allowed.
+    require(least >= 40.0 * scale, where + "the ring is missing somewhere round the circle (ink " +
+                                       std::to_string(least) + ")");
+    require(most - least <= most / 3.0, where + "the ring is not continuous (its ink runs from " +
+                                            std::to_string(least) + " to " + std::to_string(most) + ")");
 
     // Inside: past the circle, toward the button's corners, only the paper
     // (the contact shadow stays under the bottom edge).
@@ -134,6 +160,21 @@ void check_ring(const gf::WindowCapture &capture, const ButtonState &state, doub
     for (const double angle : upper_corners) {
         const Darkest outside = darkest_along(capture, centre, angle, ring + 1.5 * scale, ring * std::sqrt(2.0));
         require(paper - outside.value <= 12.0, where + "something is drawn outside the ring, in the button's corner");
+    }
+
+    // A focus ring is a circle inside the ring: its darkest radius is the
+    // same, within a device pixel, along every ray (a square ring's is
+    // further out on the diagonals by a factor of the square root of two).
+    // The window starts past the chevron and ends inside the outer ring.
+    if (state.count > 0U && (state.states[0] == gf::AnatomyState::focused ||
+                             state.states[0] == gf::AnatomyState::focus_visible)) {
+        const std::array<double, 5> rays{{0.0, pi / 4.0, pi / 2.0, 3.0 * pi / 4.0, pi}};
+        std::vector<double> radii;
+        for (const double angle : rays)
+            radii.push_back(darkest_along(capture, centre, angle, ring - 5.0 * scale, ring - 1.5 * scale).radius);
+        const double outermost = *std::max_element(radii.begin(), radii.end());
+        const double innermost = *std::min_element(radii.begin(), radii.end());
+        require(outermost - innermost <= 1.0, where + "the focus ring is not a circle concentric with the ring");
     }
 
     // Concentric: the left half mirrors the right, the ring and any focus

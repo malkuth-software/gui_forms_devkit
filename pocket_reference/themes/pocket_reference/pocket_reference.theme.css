@@ -58,8 +58,12 @@ panel.navbar::part(face) {
    every state: the base push button's bevel (keylines, one colour per
    edge) would split a circle into quadrants of light and dark at the 45
    degree lines, which read as a dashed ring while hot or pressed, so each
-   state names none. The focus ring is the theme's, inset and concentric,
-   in the ring's own blue. */
+   state names none. The focus ring is the theme's, inset, in the ring's
+   own blue; the focus part takes the face's radius, since a cue's shape
+   comes from its own part (ButtonBase paints it under ::part(focus)), so
+   without it the ring is a square over the circle. Hot is a clearly
+   stronger blue gloss; pressed a darker fill. No glow or inset shade:
+   the ring stays one even line at every angle. */
 button.nav-round {
   outline-color: role(round-hot-line);
 }
@@ -71,15 +75,18 @@ button.nav-round::part(face) {
   box-shadow: 0 1px 1px #2a2a2833;
 }
 button.nav-round::part(face):hover {
-  background: linear-gradient(to bottom, #fbfdff, #d5e7f9 50%, #b8d3f0 51%, #c5dcf5);
+  background: linear-gradient(to bottom, #f2f8ff, #c4ddf7 50%, #9fc4ee 51%, #b5d4f4);
   border-color: role(round-hot-line);
   keylines: none;
 }
 button.nav-round::part(face):active {
-  background: linear-gradient(to bottom, #c3d6ec, #b8d3f0 50%, #a9c8ea 51%, #c5dcf5);
+  background: linear-gradient(to bottom, #8fb2dc, #9dbde3 50%, #84a9d6 51%, #a3c2e6);
   border-color: role(round-hot-line);
   keylines: none;
   box-shadow: none;
+}
+button.nav-round::part(focus) {
+  border-radius: 14px;
 }
 button.nav-round:disabled::part(face) {
   background: linear-gradient(to bottom, #fafaf9, #ececea);
