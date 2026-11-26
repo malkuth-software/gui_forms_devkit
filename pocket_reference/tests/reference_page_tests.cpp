@@ -88,7 +88,7 @@ Run code_run(std::string_view text) {
 }
 
 // A heading, a Methods table (header, a short name, a name too long for any
-// column) and a paragraph with inline code.
+// column, a name with no description) and a paragraph with inline code.
 Page methods_page() {
     Page page{};
     page.id = "methods";
@@ -112,6 +112,12 @@ Page methods_page() {
     long_row.cells.push_back({code_run(long_name)});
     long_row.cells.push_back({text_run("Too long for its column.")});
     page.blocks.push_back(long_row);
+    // A type with no summary: the pack gives its row an empty cell.
+    Block empty_row{};
+    empty_row.kind = BlockKind::table_row;
+    empty_row.cells.push_back({code_run("ApplicationResult")});
+    empty_row.cells.push_back({});
+    page.blocks.push_back(empty_row);
     Block paragraph{};
     paragraph.kind = BlockKind::paragraph;
     paragraph.runs.push_back(text_run(prose_head));
@@ -190,6 +196,17 @@ void test_long_member_name_does_not_overprint() {
             whole = true;
     }
     require(whole, "the name column is narrower than request_open_files");
+    // A row with no description is one line high, its name alone on it.
+    std::size_t empty_row_pieces = 0U;
+    for (const ReferencePage::TextPlacement &placement : (*(*wide).page).text_placements()) {
+        if (placement.in_table && placement.text.find("ApplicationResult") != std::string::npos) {
+            ++empty_row_pieces;
+            require(placement.text == "ApplicationResult", "a row with no description gained text");
+            // One line of 12 x 1.45, rounded, and the cell's 4 + 4.
+            require(placement.cell.height <= 25.001, "a row with no description is taller than one line");
+        }
+    }
+    require(empty_row_pieces == 1U, "a row with no description wrapped");
     const std::unique_ptr<Fixture> narrow = make_fixture(gf::Size{420.0, 700.0});
     check_cells_hold_their_text(*(*narrow).page, "narrow: a cell's text starts left of its cell");
 }
@@ -229,7 +246,7 @@ std::string expected_page_text() {
     text += description_tail;
     text += "\n";
     text += long_name;
-    text += "\tToo long for its column.\n\n";
+    text += "\tToo long for its column.\nApplicationResult\n\n";
     text += prose_head;
     text += prose_code;
     text += prose_tail;
