@@ -2,9 +2,23 @@
 # SPDX-License-Identifier: MIT
 """Writes Pocket Reference's page text from GUI.Forms' generated reference.
 
-Reads a GUI.Forms checkout: manifests/controls.json (the control registry),
-docs/api/library.*.rst (the library topics) and docs/api/generated/*.rst (one
-page a type). Writes one UTF-8 file of pages in the reference markup, which
+Reads GUI.Forms' reference inputs, from either of two roots:
+
+    a checkout       manifests/controls.json (the control registry),
+                     docs/api/library.*.rst (the library topics) and
+                     docs/api/generated/gui_forms.*.rst (one page a type);
+                     the version from CMakeLists.txt, the commit from git
+    an installed     share/GUIForms/ledgers/controls.json, and the same
+    SDK prefix       pages under share/GUIForms/docs/api/; the version from
+                     lib/cmake/GUIForms/GUIFormsConfigVersion.cmake, the
+                     commit from share/GUIForms/docs/api/REVISION
+
+--version and --commit name the GUI.Forms build the program is built
+against (the build passes the SDK's version and, in the devkit, the resolved
+revision). The pages then name exactly that build, and a root that describes
+another build is refused rather than packed under the wrong name.
+
+Writes one UTF-8 file of pages in the reference markup, which
 reference_document.cpp reads; pocket-reference-pack then codes it into the
 pack. The markup is line-based: a keyword, a tab, then tab-separated fields.
 
@@ -26,6 +40,7 @@ import argparse
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 CODE_ON = "\x01"
@@ -293,17 +308,77 @@ def topic_title(text: str, fallback: str) -> str:
     return fallback
 
 
+COMMIT_LENGTH = 12
+
+
+class Inputs:
+    """Where one root keeps the reference inputs, and the build they describe."""
+
+    def __init__(self, api: Path, registry: Path, version: str, commit: str) -> None:
+        self.api: Path = api
+        self.registry: Path = registry
+        self.version: str = version
+        self.commit: str = commit
+
+
+def checkout_commit(root: Path) -> str:
+    """The checkout's HEAD, or "" when the root is not a git checkout."""
+    try:
+        result = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True)
+    except OSError:
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def locate(root: Path) -> Inputs:
+    """The inputs of a checkout or of an installed SDK prefix; raises SystemExit naming what is missing."""
+    if (root / "manifests/controls.json").is_file() and (root / "docs/api").is_dir():
+        found: re.Match[str] | None = None
+        if (root / "CMakeLists.txt").is_file():
+            found = re.search(r'project\(GUIForms VERSION ([\d.]+)', (root / "CMakeLists.txt").read_text())
+        return Inputs(root / "docs/api", root / "manifests/controls.json",
+                      found.group(1) if found is not None else "", checkout_commit(root))
+    share: Path = root / "share/GUIForms"
+    if (share / "ledgers/controls.json").is_file() and (share / "docs/api").is_dir():
+        version: str = ""
+        config: Path = root / "lib/cmake/GUIForms/GUIFormsConfigVersion.cmake"
+        if config.is_file():
+            match: re.Match[str] | None = re.search(r'set\(PACKAGE_VERSION "([\d.]+)"\)', config.read_text())
+            version = match.group(1) if match is not None else ""
+        revision: Path = share / "docs/api/REVISION"
+        commit: str = revision.read_text().strip() if revision.is_file() else ""
+        return Inputs(share / "docs/api", share / "ledgers/controls.json", version, commit)
+    raise SystemExit(f"{root} holds no GUI.Forms reference inputs: neither a checkout (manifests/controls.json, "
+                     "docs/api/) nor an installed SDK (share/GUIForms/ledgers/controls.json, share/GUIForms/docs/api/)")
+
+
+def settle(found: str, requested: str, what: str, root: Path, same: Callable[[str, str], bool]) -> str:
+    """The requested value when the root agrees with it (or cannot say), else the root's own."""
+    if requested and found and not same(found, requested):
+        raise SystemExit(f"{root} describes GUI.Forms {what} {found}, not the {requested} the program is built "
+                         "against: point the build at the inputs of that build")
+    value: str = requested or found
+    if not value:
+        raise SystemExit(f"{root} does not say its GUI.Forms {what}: pass --{what}")
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gui-forms", type=Path, required=True)
+    parser.add_argument("--gui-forms", type=Path, required=True,
+                        help="a GUI.Forms checkout or an installed GUI.Forms SDK prefix")
+    parser.add_argument("--version", default="", help="the GUI.Forms version the program is built against")
+    parser.add_argument("--commit", default="", help="the GUI.Forms commit the program is built against")
     parser.add_argument("--out", type=Path, required=True)
     arguments = parser.parse_args()
     root: Path = arguments.gui_forms
-    registry: list[dict] = json.loads((root / "manifests/controls.json").read_text())["controls"]
-    commit: str = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
-                                 capture_output=True, text=True, check=True).stdout.strip()
-    version: str = re.search(r'project\(GUIForms VERSION ([\d.]+)', (root / "CMakeLists.txt").read_text()).group(1)
-    generated: Path = root / "docs/api/generated"
+    inputs: Inputs = locate(root)
+    version: str = settle(inputs.version, arguments.version, "version", root, lambda a, b: a == b)
+    commit: str = settle(inputs.commit, arguments.commit.lower(), "commit", root,
+                         lambda a, b: a.startswith(b) or b.startswith(a))[:COMMIT_LENGTH]
+    registry: list[dict] = json.loads(inputs.registry.read_text())["controls"]
+    api: Path = inputs.api
+    generated: Path = api / "generated"
     type_files: list[Path] = sorted(generated.glob("gui_forms.*.rst"))
     for path in type_files:
         PAGES.types.add(path.stem.split(".", 1)[1])
@@ -322,7 +397,7 @@ def main() -> int:
         for name in sorted(categories[category]):
             out.append(f"3\ttype/{name}\t{name}\tcontrol")
     topics: list[tuple[str, str, list[str]]] = []
-    for path in sorted((root / "docs/api").glob("library.*.rst")):
+    for path in sorted(api.glob("library.*.rst")):
         text: str = path.read_text()
         stem: str = path.stem.split(".", 1)[1]
         types: list[str] = [t for t in dict.fromkeys(re.findall(r'generated/gui_forms\.(\w+)', text))
@@ -360,7 +435,7 @@ def main() -> int:
     controls_crumbs: list[tuple[str, str]] = [home, ("group/controls", "Controls")]
     page("group/controls", "Controls", controls_crumbs, "", [
         "h1\tControls",
-        "p\tThe controls of the registry (manifests/controls.json), by category.",
+        "p\tThe controls of the registry (controls.json), by category.",
         *[f"card\tgroup/category/{c}\t{c}\t{len(categories[c])} controls" for c in sorted(categories)],
     ])
     for category in sorted(categories):
@@ -373,7 +448,7 @@ def main() -> int:
         *[f"card\ttopic/{stem}\t{clean(title)}\t{len(types)} types" for stem, title, types in topics],
     ])
     for stem, title, types in topics:
-        converted = Page((root / "docs/api" / f"library.{stem}.rst").read_text())
+        converted = Page((api / f"library.{stem}.rst").read_text())
         body: list[str] = converted.render()
         body.extend(f"card\ttype/{t}\t{t}\t{clean(purposes.get(t, ''))}" for t in types)
         page(f"topic/{stem}", title, library_crumbs + [(f"topic/{stem}", title)], "", body)

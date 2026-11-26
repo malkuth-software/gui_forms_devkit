@@ -97,7 +97,8 @@ def stage_portable(build: Path, toolkit: Path, folder: Path, program: str) -> No
     folder.mkdir(parents=True)
     for name in (program, "reference.pack"):
         if not (build / name).is_file():
-            raise RuntimeError("the build has no " + name)
+            hint = ": configure with POCKET_REFERENCE_DOCS" if name == "reference.pack" else ""
+            raise RuntimeError("the build has no " + name + hint)
         shutil.copy2(build / name, folder / name)
     copy_notices(toolkit, folder / "licenses")
 

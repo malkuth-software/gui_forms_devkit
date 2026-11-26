@@ -70,6 +70,7 @@ jobs:
         run: |
           python -B -m unittest discover -s harness/harness -p "test_*.py"
           python -B -m unittest discover -s programs/tools -p "test_*.py"
+          python -B -m unittest discover -s pocket_reference/tools -p "test_*.py"
       - name: Views and programs checks (strict profile)
         run: python -B harness/harness/run_checks.py --profile strict views programs
 

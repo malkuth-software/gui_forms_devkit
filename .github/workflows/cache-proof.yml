@@ -209,6 +209,44 @@ jobs:
           path: gui_forms
           fetch-depth: 0
           submodules: recursive
+      # GUI.Forms builds with the template_harness commit its harness.lock
+      # names, checked out beside it (<workspace>/template_harness), as its
+      # own .github/actions/harness-checkout does; HARNESS_PROJECT stays the
+      # devkit's, set below.
+      - name: Read GUI.Forms' harness.lock
+        id: harness-lock
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        run: |
+          lock=gui_forms/harness.lock
+          repositories=$(sed -n 's/^repository[[:space:]]*=[[:space:]]*"\([A-Za-z0-9_.-]*\/[A-Za-z0-9_.-]*\)".*$/\1/p' "$lock")
+          commits=$(sed -n 's/^commit[[:space:]]*=[[:space:]]*"\([0-9a-f]\{40\}\)".*$/\1/p' "$lock")
+          if [ -z "$repositories" ] || [ "$(printf '%s\n' "$repositories" | wc -l)" -ne 1 ]; then
+            echo "::error::$lock needs exactly one line repository = \"owner/name\""; exit 1
+          fi
+          if [ -z "$commits" ] || [ "$(printf '%s\n' "$commits" | wc -l)" -ne 1 ]; then
+            echo "::error::$lock needs exactly one line commit = \"<40 lowercase hexadecimal characters>\""; exit 1
+          fi
+          echo "repository=$repositories" >> "$GITHUB_OUTPUT"
+          echo "commit=$commits" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.skip.outputs.skip != 'true'
+        with:
+          repository: ${{ steps.harness-lock.outputs.repository }}
+          ref: ${{ steps.harness-lock.outputs.commit }}
+          path: template_harness
+          persist-credentials: false
+      - name: Check template_harness against the lock
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        env:
+          COMMIT: ${{ steps.harness-lock.outputs.commit }}
+        run: |
+          head=$(git -C template_harness rev-parse HEAD)
+          if [ "$head" != "$COMMIT" ]; then
+            echo "::error::template_harness is at $head, not GUI.Forms' locked $COMMIT"; exit 1
+          fi
+          echo "template_harness at $COMMIT"
       - uses: ./.github/actions/devkit-setup
         if: steps.skip.outputs.skip != 'true'
         with:
