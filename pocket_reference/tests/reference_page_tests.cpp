@@ -335,6 +335,74 @@ void test_select_and_copy() {
     require(!page.copy() && page.has_selection(), "copy without a host claimed the clipboard");
 }
 
+constexpr std::string_view long_code_line =
+    "std::unique_ptr<gui_forms::ApplicationWindowHandle> handle = windows.open(std::make_unique<MainWindow>(), "
+    "options, \"a_string_literal_far_too_long_to_fit_on_any_line_of_a_narrow_page_without_breaking_it\");";
+constexpr std::string_view long_signature =
+    "ApplicationResult run(std::unique_ptr<Window> window, ApplicationWindowOptions options, "
+    "std::function<void(ApplicationWindowHandle)> started)";
+
+// A page taller than its view, with a code block and a signature whose lines
+// are far wider than the page.
+Page wide_code_page() {
+    Page page{};
+    page.id = "wide";
+    Block signature{};
+    signature.kind = BlockKind::signature;
+    signature.lines.push_back(std::string(long_signature));
+    page.blocks.push_back(signature);
+    Block code{};
+    code.kind = BlockKind::code;
+    code.lines.push_back(std::string(long_code_line));
+    code.lines.push_back("");
+    code.lines.push_back("    return handle;");
+    page.blocks.push_back(code);
+    for (std::size_t index = 0U; index < 40U; ++index) {
+        Block paragraph{};
+        paragraph.kind = BlockKind::paragraph;
+        paragraph.runs.push_back(text_run("A paragraph that makes the page taller than its view."));
+        page.blocks.push_back(paragraph);
+    }
+    return page;
+}
+
+// Follow-up to the captures: the page itself never scrolls sideways. Code
+// and signatures wrap inside their boxes (a token wider than a line breaks),
+// and the content is the view's width even once the vertical bar takes its
+// share of the view.
+void test_page_content_follows_the_view_width() {
+    TwoFaceText text;
+    std::shared_ptr<ReferencePage> page = gf::make_control<ReferencePage>(gf::StableId("page"));
+    gf::Window window(page, gf::Size{600.0, 400.0});
+    window.set_text_metrics_provider(&text);
+    (*page).set_page(wide_code_page());
+    window.perform_layout();
+    const gf::Rect viewport = (*page).viewport_rectangle();
+    // The page is taller than the view, so a classic vertical bar narrows
+    // the view (an overlay bar does not); either way the content fits it.
+    require(viewport.width > 0.0 && viewport.width <= 600.0, "the page has no view");
+    require((*page).content_width() <= viewport.width + 0.5, "the page's content is wider than its view");
+    std::size_t code_pieces = 0U;
+    for (const ReferencePage::TextPlacement &placement : (*page).text_placements()) {
+        require(placement.bounds.x + placement.bounds.width <= (*page).column_right() + 0.5,
+                "text runs past the page's column");
+        if (placement.code)
+            ++code_pieces;
+    }
+    require(code_pieces > 0U, "the page laid no code");
+    // Wrapping and breaking keep the code's text, spaces and blank line.
+    (*page).select_all();
+    const std::string copied = (*page).selected_text();
+    require(copied.find(std::string(long_signature)) != std::string::npos, "the wrapped signature lost text");
+    require(copied.find(std::string(long_code_line) + "\n\n    return handle;") != std::string::npos,
+            "the wrapped code block lost text");
+    // A narrower view lays out narrower still, with no sideways scroll.
+    window.resize(gf::Size{420.0, 400.0});
+    window.perform_layout();
+    require((*page).content_width() <= (*page).viewport_rectangle().width + 0.5,
+            "after a resize the page's content is wider than its view");
+}
+
 } // namespace
 
 int main() {
@@ -342,6 +410,7 @@ int main() {
         test_long_member_name_does_not_overprint();
         test_inline_code_sits_on_the_body_baseline();
         test_select_and_copy();
+        test_page_content_follows_the_view_width();
         std::cout << "pocket_reference_page_tests: all tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {
