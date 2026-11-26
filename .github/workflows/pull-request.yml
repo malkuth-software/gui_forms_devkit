@@ -25,6 +25,8 @@ jobs:
           python -B -m unittest discover -s harness/harness -p "test_*.py"
           python -B -m unittest discover -s programs/tools -p "test_*.py"
           python -B -m unittest discover -s pocket_reference/tools -p "test_*.py"
+      - name: HOUSE_STYLE.md matches the notes repository
+        run: python -B harness/harness/sync_house_style.py --check || echo "::warning file=HOUSE_STYLE.md::HOUSE_STYLE.md differs from notes main; run harness/harness/sync_house_style.py"
       - name: Views and programs checks (strict profile)
         run: python -B harness/harness/run_checks.py --profile strict views programs
   newest:

@@ -108,7 +108,11 @@ Later builds stay on the same GUI.Forms build until you move them with
 `python3 build.py --resolve`; `--floor` builds against the floor itself.
 `--configure-only`, `--no-tests` and `--dry-run` do what they say.
 `python3 build.py check` runs the checks for house style, lifetime rules and
-retained mode over `src`, `tests` and `reference`.
+retained mode over `src`, `tests` and `reference`. The checks cover only the
+mechanical part of the style: read [`HOUSE_STYLE.md`](HOUSE_STYLE.md) (in an
+app, `.devkit/HOUSE_STYLE.md`) before writing code. It is a verbatim copy of
+the canonical text in the notes repository;
+`python3 harness/harness/sync_house_style.py` refreshes it.
 
 #### The build guard
 
