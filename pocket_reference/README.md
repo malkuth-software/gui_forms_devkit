@@ -3,7 +3,8 @@
 Pocket Reference is GUI.Forms' API reference as a desktop program. It reads
 one file, `reference.pack`, made at build time from GUI.Forms' generated
 docs: a page for every control and type, with a contents tree, links, search,
-find in page and back and forward. Each control's page shows that control as
+find in page, back and forward, and page text you can select and copy (a
+table copies as tab-separated rows). Each control's page shows that control as
 GUI.Forms draws it, rendered from its stock specimen when the pack is built.
 
 It is built with GUI.Forms, so it is also a small example of a GUI.Forms

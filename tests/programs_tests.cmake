@@ -83,6 +83,13 @@ if(TARGET GUIForms::GalleryModel)
     gui_forms_use_library_allocator(gui_forms_gallery_headless_capture_tests)
 endif()
 
+# Pocket Reference's page: table cells hold their text, inline code shares
+# the prose baseline, select and copy (pocket_reference/CMakeLists.txt
+# builds the suite).
+if(TARGET pocket-reference-page-tests)
+    add_test(NAME pocket_reference_page_tests COMMAND pocket-reference-page-tests)
+endif()
+
 # Each program bundle or folder carries the font licences and no face file
 # (font pack stage 4).
 foreach(_gf_program IN ITEMS gui_forms_gallery gui_forms_correspondence gui_forms_visual_inspector_lab
