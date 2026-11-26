@@ -271,7 +271,13 @@ jobs:
         run: |
           . .ci/local-build-env.sh
           ccache --zero-stats
-          python gui_forms/tools/ci_build.py --install-only
+          # The installed reference examples' tests include an MCP launch
+          # that opens a window; Linux gives them a virtual display.
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a python gui_forms/tools/ci_build.py --install-only
+          else
+            python gui_forms/tools/ci_build.py --install-only
+          fi
           mkdir -p .ci
           ccache --print-stats > .ci/ccache-stats-gui-forms-${{ matrix.cache }}.txt
       - name: Prove the row
