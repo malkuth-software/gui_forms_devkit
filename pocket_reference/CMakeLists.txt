@@ -51,6 +51,12 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 set(POCKET_REFERENCE_DOCS "${pocket_reference_default_docs}" CACHE PATH
     "The GUI.Forms checkout or SDK prefix whose reference docs the pack is made from (the toolkit source, or the SDK when it ships them, by default)")
+# A relative POCKET_REFERENCE_DOCS (the lockstep's .sdk/gui-forms-docs) is
+# the workspace's: made absolute here, since the pack's build rules run in
+# the build tree and would read it from there.
+if(POCKET_REFERENCE_DOCS AND NOT IS_ABSOLUTE "${POCKET_REFERENCE_DOCS}")
+  cmake_path(ABSOLUTE_PATH POCKET_REFERENCE_DOCS BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" NORMALIZE)
+endif()
 set(POCKET_REFERENCE_COMMIT "" CACHE STRING
     "The GUI.Forms commit the program is built against, which the pages name (the docs checkout's HEAD by default)")
 
