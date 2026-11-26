@@ -650,22 +650,39 @@ double ReferencePage::place_code(std::string_view line, double left, double top,
                 break;
             }
             const gf::FontSpec &token_font = part == Part::comment ? comment_font : font;
-            const double width = width_of(text, token_font);
-            if (wrap_width > 0.0 && x > left && x + width - left > wrap_width) {
-                line_top += frame.height;
-                x = left + 4.0 * space;
+            // A token goes to the next line (indented four spaces) when it
+            // does not fit; a token wider than a whole line (a long string,
+            // a long qualified name) breaks where it fits, so no code runs
+            // past the box.
+            std::string_view rest = text;
+            while (!rest.empty()) {
+                double width = width_of(rest, token_font);
+                if (wrap_width > 0.0 && x > left && x + width - left > wrap_width) {
+                    line_top += frame.height;
+                    x = left + 4.0 * space;
+                }
+                std::string_view head = rest;
+                if (wrap_width > 0.0 && x + width - left > wrap_width) {
+                    const double room = std::max(space, wrap_width - (x - left));
+                    const std::size_t length = break_length(rest, token_font, room);
+                    if (length < rest.size()) {
+                        head = rest.substr(0U, length);
+                        width = width_of(head, token_font);
+                    }
+                }
+                Piece piece{};
+                piece.bounds = gf::Rect{x, line_top, width, frame.height};
+                piece.baseline = line_top + frame.baseline;
+                piece.font = token_font;
+                piece.text = head;
+                piece.part = part;
+                piece.lead_spaces = spaces_before;
+                spaces_before = 0U;
+                push_piece(piece);
+                x += width;
+                right = std::max(right, x);
+                rest = rest.substr(head.size());
             }
-            Piece piece{};
-            piece.bounds = gf::Rect{x, line_top, width, frame.height};
-            piece.baseline = line_top + frame.baseline;
-            piece.font = token_font;
-            piece.text = text;
-            piece.part = part;
-            piece.lead_spaces = spaces_before;
-            spaces_before = 0U;
-            push_piece(piece);
-            x += width;
-            right = std::max(right, x);
         }
     }
     state = cursor.state.value;
@@ -843,7 +860,6 @@ void ReferencePage::relayout() {
     const double paragraph_width = 80.0 * width_of("0", f.body);
     const double column = std::max(120.0, std::min(width, page_maximum_width * unit) - 2.0 * page_padding_x);
     column_right_ = page_padding_x + column;
-    double right = width;
     double y = page_padding_top;
     double pending = 0.0;
     bool first_block = true;
@@ -937,19 +953,18 @@ void ReferencePage::relayout() {
         case BlockKind::code: {
             const std::size_t box_index = boxes_.size();
             boxes_.push_back(Box{gf::Rect{left, y, available, 0.0}, Part::code_block, no_link});
+            // Long lines wrap inside the box, as a signature's do: the page's
+            // content is never wider than its view, so the page itself has
+            // no horizontal scroll bar (owner's 1.0.6 captures at 900 wide).
             std::uint64_t state = 0U;
             double line_top = y + 10.0;
-            double widest = left + available;
             for (const std::string &line : block.lines) {
                 double bottom = line_top;
-                const double line_right =
-                    place_code(line, left + 12.0, line_top, code_line, f.code, 0.0, state, bottom);
-                widest = std::max(widest, line_right + 12.0);
+                static_cast<void>(
+                    place_code(line, left + 12.0, line_top, code_line, f.code, available - 24.0, state, bottom));
                 line_top = bottom;
             }
-            boxes_[box_index].bounds.width = widest - left;
             boxes_[box_index].bounds.height = line_top + 10.0 - y;
-            right = std::max(right, widest + page_padding_x);
             y = line_top + 10.0;
             break;
         }
@@ -985,7 +1000,10 @@ void ReferencePage::relayout() {
         index = next;
     }
     content_height_ = y + page_padding_bottom;
-    content_width_ = right;
+    // Every block fits the column (tables share it, code and signatures
+    // wrap in it, figures shrink to it), so the content is the view's width;
+    // only a view narrower than the least column (120) scrolls.
+    content_width_ = std::max(width, column_right_ + page_padding_x);
     // The laid text does not change with the width, so a selection made at
     // another width still names the same text; a shorter text (none here)
     // would clamp it.

@@ -112,6 +112,9 @@ class ReferencePage final : public gui_forms::ScrollableControl {
     // Where the page's column ends, in content coordinates: no table and no
     // wrapped text runs past it.
     [[nodiscard]] double column_right() const noexcept { return column_right_; }
+    // The width of the laid content: the view's, so the page itself never
+    // scrolls sideways.
+    [[nodiscard]] double content_width() const noexcept { return content_width_; }
 
     [[nodiscard]] const gui_forms::ControlAnatomy &anatomy() const noexcept override;
     [[nodiscard]] gui_forms::Size measure(gui_forms::Size available) override;
