@@ -92,6 +92,20 @@ else()
 endif()
 set_target_properties(pocket-reference PROPERTIES OUTPUT_NAME PocketReference)
 target_link_libraries(pocket-reference PRIVATE GUIForms::Application stxlib::algorithms pocket_reference_coder)
+# ReferencePage's layout and selection suite: table cells hold their text,
+# inline code shares the prose baseline, select and copy. A headless window
+# and a fixture's metrics; no pack, no host. The devkit registers it with
+# CTest (tests/programs_tests.cmake); a standalone build registers it here.
+add_executable(pocket-reference-page-tests tests/reference_page_tests.cpp src/reference_document.cpp
+                                           src/reference_page.cpp)
+target_include_directories(pocket-reference-page-tests PRIVATE src)
+target_link_libraries(pocket-reference-page-tests PRIVATE GUIForms::Application stxlib::algorithms
+                                                          pocket_reference_coder)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  enable_testing()
+  add_test(NAME pocket_reference_page_tests COMMAND pocket-reference-page-tests)
+endif()
+
 # All the program's C++ allocations come from STXlib's allocator, as in
 # GUI.Forms' own programs; a sanitizer build keeps the toolchain's operator new.
 gui_forms_use_library_allocator(pocket-reference)

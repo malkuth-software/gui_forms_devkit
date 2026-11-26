@@ -56,6 +56,7 @@ class ReferenceBrowser final : public gui_forms::Component, public ReferencePage
     void on_filter(const std::string &text);
     void on_find_text(const std::string &text);
     void on_match_case(bool checked);
+    void edit_focused(bool copy);
     std::shared_ptr<gui_forms::Command> command(std::string id, std::string label, std::string shortcut);
     void bind_key(gui_forms::Command &command, std::uint32_t key, gui_forms::Modifier modifiers);
     void build_menus();
