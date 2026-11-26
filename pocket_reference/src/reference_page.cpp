@@ -129,14 +129,10 @@ bool is_word_byte(char c) noexcept {
            byte == '_' || byte >= 0x80U;
 }
 
-bool has_modifier(gf::Modifier value, gf::Modifier wanted) noexcept {
-    return (static_cast<std::uint8_t>(value) & static_cast<std::uint8_t>(wanted)) != 0U;
-}
-
 // Ctrl on Windows and Linux, Cmd on macOS: either is taken on every host,
 // as TextBox takes them.
 bool has_command_modifier(gf::Modifier value) noexcept {
-    return has_modifier(value, gf::Modifier::control) || has_modifier(value, gf::Modifier::meta);
+    return gf::has_modifier(value, gf::Modifier::control) || gf::has_modifier(value, gf::Modifier::meta);
 }
 
 // The font a run is set in, within a flow whose faces are `body` and `code`.
@@ -1356,7 +1352,7 @@ void ReferencePage::handle_mouse(gf::MouseEventArgs &arguments) {
             set_selection(selection_anchor_, offset_at(content));
     } else if (arguments.action == gf::PointerAction::down && arguments.button == gf::PointerButton::primary) {
         press_location_ = local;
-        const bool extend = has_modifier(arguments.modifiers, gf::Modifier::shift);
+        const bool extend = gf::has_modifier(arguments.modifiers, gf::Modifier::shift);
         if (link != no_link && !extend && arguments.clicks <= 1U) {
             pressed_link_ = link;
             arguments.handled = true;
