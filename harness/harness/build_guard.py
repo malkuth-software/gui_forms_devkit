@@ -154,6 +154,17 @@ def same_path(left: Path, right: Path) -> bool:
     return os.path.normcase(str(left.resolve())) == os.path.normcase(str(right.resolve()))
 
 
+def is_compile_output(name: str) -> bool:
+    """Whether name is a compile's output (an object file), not a link's.
+
+    With Ninja, CMake records linker dependency files too (on Linux, where the
+    linker writes them), so `ninja -t deps` lists executables and archives.
+    Their inputs are objects of the build directory, absent in a fresh
+    workspace, so they would always count as misses.
+    """
+    return name.endswith('.o') or name.endswith('.obj')
+
+
 def inside(path: Path, directory: Path) -> bool:
     try:
         path.resolve().relative_to(directory.resolve())
@@ -388,7 +399,8 @@ def objects_to_compile(inputs: Inputs, record: dict[str, Any]) -> tuple[list[str
             return [], []
         compiles: list[Compile] = ninja_compiles(inputs.build_dir)
         return [compile.output for compile in compiles], [compile.source for compile in compiles]
-    missing: list[str] = [name for name in record.get('objects', {}) if not (inputs.build_dir / name).exists()]
+    missing: list[str] = [name for name in record.get('objects', {})
+                          if is_compile_output(name) and not (inputs.build_dir / name).exists()]
     return missing, []
 
 
@@ -481,7 +493,7 @@ def deps_record(workspace: Path, build_dir: Path, text: str) -> dict[str, Any]:
     resolved_workspace: Path = workspace.resolve()
 
     def flush() -> None:
-        if current:
+        if current and is_compile_output(current):
             objects[current] = {'inputs': inputs[:], 'digest': input_digest(workspace, inputs)}
 
     line: str
