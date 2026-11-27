@@ -3,7 +3,8 @@
 // Shared command-line contract for the GUI.Forms demonstration programs
 // (Gallery, Correspondence and the labs) on every host:
 //
-//   --mcp, --model-directed, --mcp-appearance-review, --mcp-script <file>
+//   --mcp-shared, --mcp-fcfs, --mcp, --mcp-help [<topic>], --mcp-socket,
+//   --mcp-appearance-review, --mcp-script <file>
 //                       The library's automation (MCP) arguments: accepted and
 //                       left to the library, which reads the process's own
 //                       arguments (gui_forms/automation/marks/automation_marks.hpp).
@@ -127,7 +128,7 @@ struct ProgramOptions final {
 
 inline void print_program_usage(const char* program) {
     std::fprintf(stderr,
-                 "usage: %s [--mcp] [--mcp-script <file.jsonl>] [--smoke-test] [--capture <path.png>] [--headless] "
+                 "usage: %s [--mcp-shared|--mcp-fcfs|--mcp] [--mcp-script <file.jsonl>] [--smoke-test] [--capture <path.png>] [--headless] "
                  "[--size <W>x<H>] [--scale <factor>] [--page <id>] [--backdrop <list>] [--theme-base <id>]\n"
                  "       [--scheme light|dark] [--reveal <id>] [--open-menu <id>[/<item>]] [--check <id>]\n"
                  "       [--familiar-theme <id>]\n"
@@ -185,7 +186,15 @@ inline std::optional<ProgramOptions> parse_program_options(int argc, char** argv
     for (std::size_t index = 0U; index < argument_count; ++index) {
         const std::string_view argument = arguments[index];
         // The automation's arguments are the library's (automation_marks.hpp).
-        if (argument == "--mcp" || argument == "--model-directed" || argument == "--mcp-appearance-review") continue;
+        if (argument == "--mcp" || argument == "--mcp-shared" || argument == "--mcp-fcfs" ||
+            argument == "--mcp-appearance-review" || argument == "--mcp-socket") {
+            continue;
+        }
+        if (argument == "--mcp-help") {
+            // The option and its topic, when the next argument is one.
+            if (index + 1U < argument_count && !arguments[index + 1U].starts_with("-")) ++index;
+            continue;
+        }
         if (argument == "--mcp-script") {
             ++index;
             continue;

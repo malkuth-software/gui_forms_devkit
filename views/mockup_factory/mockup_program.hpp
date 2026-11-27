@@ -8,7 +8,7 @@
 //                    [--mockups <dir>] [--interface=<name>] [--screenshots <dir>]
 //                    [--base gui-forms|windows-professional] [--familiar-theme <id>]
 //                    [--no-sheet] [--scheme light|dark] [--size <W>x<H>] [--smoke-test]
-//                    [--mcp] [--mcp-script <file>] [--theme ...]
+//                    [--mcp-shared|--mcp-fcfs|--mcp] [--mcp-script <file>] [--theme ...]
 //
 // - A form named on the command line is opened with its fixture and sheet
 //   (the given ones, else the siblings that exist) and listed alone.
@@ -75,7 +75,7 @@ inline void print_mockup_usage() {
                  "usage: gui-forms-mockup [<file.form>] [--fixture <file>] [--sheet <file.theme.css>]\n"
                  "       [--mockups <dir>] [--interface=<name>] [--screenshots <dir>]\n"
                  "       [--base gui-forms|windows-professional] [--familiar-theme <id>] [--no-sheet]\n"
-                 "       [--scheme light|dark] [--size <W>x<H>] [--smoke-test] [--mcp] [--mcp-script <file>]\n");
+                 "       [--scheme light|dark] [--size <W>x<H>] [--smoke-test] [--mcp-shared|--mcp-fcfs|--mcp] [--mcp-script <file>]\n");
 }
 
 // The options of `argv`, or none (usage printed) for an unknown option, a
@@ -94,7 +94,15 @@ inline void print_mockup_usage() {
     constexpr std::string_view interface_prefix = "--interface=";
     for (std::size_t index = 0U; index < arguments.size(); ++index) {
         const std::string_view argument = arguments[index];
-        if (argument == "--mcp" || argument == "--model-directed" || argument == "--mcp-shared") continue;
+        if (argument == "--mcp" || argument == "--mcp-shared" || argument == "--mcp-fcfs" ||
+            argument == "--mcp-appearance-review" || argument == "--mcp-socket") {
+            continue;
+        }
+        if (argument == "--mcp-help") {
+            // The option and its topic, when the next argument is one.
+            if (index + 1U < arguments.size() && !arguments[index + 1U].starts_with("-")) ++index;
+            continue;
+        }
         if (argument == "--smoke-test") {
             options.program.smoke_test = true;
             continue;

@@ -14,7 +14,7 @@
 // with or without the mockup's sheet, or a familiar theme), Scheme (the
 // system's, light or dark) and Mockups (the catalogue, opened by name).
 //
-// MCP: every GUI.Forms program serves MCP under --mcp; the factory adds
+// MCP: every GUI.Forms program serves MCP under --mcp-shared or --mcp-fcfs; the factory adds
 // mockup_list, mockup_open (by name), mockup_reload, mockup_check (the last
 // load's diagnostics) and mockup_events (the declared handlers and what
 // they recorded). A command a mockup binds is a model tool too
