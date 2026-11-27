@@ -210,9 +210,12 @@ class Page:
             stripped: str = line.strip()
             if stripped.startswith(":header-rows:"):
                 header = True
-            elif stripped.startswith("* - "):
+            elif stripped.startswith("* - ") or stripped == "* -":
                 rows.append([stripped[4:]])
-            elif stripped.startswith("- ") and rows:
+            elif (stripped.startswith("- ") or stripped == "-") and rows:
+                # A cell with nothing in it ("-" and spaces, as the
+                # library pages write a type with no summary) is an empty
+                # cell, not a "-" on the end of the cell before.
                 rows[-1].append(stripped[2:])
             elif stripped and rows and not stripped.startswith(":"):
                 rows[-1][-1] += " " + stripped

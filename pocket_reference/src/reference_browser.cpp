@@ -3,6 +3,7 @@
 
 #include "reference_icons.hpp"
 
+#include <gui_forms/controls/text_box_base.hpp>
 #include <gui_forms/event/event/event.hpp>
 
 #include <algorithm>
@@ -90,6 +91,13 @@ void ReferenceBrowser::build_menus() {
     std::shared_ptr<gf::Command> find_previous = command("find-previous", "Find &Previous", "Shift+F3");
     std::shared_ptr<gf::Command> find_close = command("find-close", "Close Find", "");
     std::shared_ptr<gf::Command> search = command("search", "&Search", "Ctrl+E");
+    // Copy and Select All bind no window shortcut, so Ctrl+C (Cmd+C) and
+    // Ctrl+A (Cmd+A) still reach whichever control has focus: a text box
+    // copies its own text, the page its selection. From the menu they are
+    // routed: the page answers them while it has focus (its command
+    // target), and on_command takes them otherwise.
+    std::shared_ptr<gf::Command> copy = command("copy", "&Copy", "Ctrl+C");
+    std::shared_ptr<gf::Command> select_all = command("select-all", "Select &All", "Ctrl+A");
     std::shared_ptr<gf::Command> about = command("about", "&About Pocket Reference", "");
     std::shared_ptr<gf::Command> contents = command("contents", "&Contents", "");
     bind_key(*back, gf::PhysicalKey::left, gf::Modifier::alt);
@@ -112,6 +120,9 @@ void ReferenceBrowser::build_menus() {
     gf::MenuStripItemSpec edit{};
     edit.stable_id = "menu.edit";
     edit.text = "&Edit";
+    edit.items.push_back(gf::MenuItemSpec{"copy", gf::MenuItemKind::command, copy, "&Copy"});
+    edit.items.push_back(gf::MenuItemSpec{"select-all", gf::MenuItemKind::command, select_all, "Select &All"});
+    edit.items.push_back(gf::MenuItemSpec{"edit.separator", gf::MenuItemKind::separator});
     edit.items.push_back(gf::MenuItemSpec{"find", gf::MenuItemKind::command, find, "&Find in Page"});
     edit.items.push_back(gf::MenuItemSpec{"find-next", gf::MenuItemKind::command, find_next, "Find &Next"});
     edit.items.push_back(gf::MenuItemSpec{"find-previous", gf::MenuItemKind::command, find_previous, "Find &Previous"});
@@ -402,6 +413,25 @@ void ReferenceBrowser::set_filter(std::string_view filter) {
     on_filter(std::string(filter));
 }
 
+// Copy or Select All with the page not focused (the page answers them
+// itself when it is): a focused text box (the find text, the filter, the
+// search field) takes them, else the page.
+void ReferenceBrowser::edit_focused(bool copy) {
+    const std::shared_ptr<gf::TextBoxBase> box =
+        std::dynamic_pointer_cast<gf::TextBoxBase>(window_.focused_control());
+    if (box != nullptr) {
+        if (copy)
+            static_cast<void>((*box).copy());
+        else
+            (*box).select_all();
+        return;
+    }
+    if (copy)
+        static_cast<void>((*page_view_).copy());
+    else
+        (*page_view_).select_all();
+}
+
 void ReferenceBrowser::open_link(std::string_view target) { navigate(target, true); }
 
 void ReferenceBrowser::hover_link(std::string_view target) {
@@ -425,6 +455,8 @@ void ReferenceBrowser::on_command(const gf::CommandInvocation &invocation) {
         go_forward();
     else if (id == "home" || id == "about")
         navigate("home", true);
+    else if (id == "copy" || id == "select-all")
+        edit_focused(id == "copy");
     else if (id == "find")
         show_find("");
     else if (id == "contents")

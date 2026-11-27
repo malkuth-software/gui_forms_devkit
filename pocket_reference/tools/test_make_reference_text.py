@@ -126,5 +126,29 @@ class SdkRoot(unittest.TestCase):
         self.assertIn("no GUI.Forms reference inputs", result.stderr)
 
 
+class ListTables(unittest.TestCase):
+    """A list-table row whose cell is only "-" (a type with no summary on a
+    library page) gives an empty cell: the name before it keeps no "-"."""
+
+    def test_an_empty_cell_stays_empty(self) -> None:
+        sys.path.insert(0, str(TOOL.parent))
+        try:
+            import make_reference_text
+        finally:
+            sys.path.pop(0)
+        text = ("Related types\n-------------\n\n.. list-table::\n   :class: autosummary longtable\n"
+                "   :widths: 35 65\n\n"
+                "   * - ``ApplicationConfig``\n     - Everything an application is made with.\n"
+                "   * - ``ApplicationResult``\n     -  \n"
+                "   * - ``ApplicationWindow``\n     -\n\n")
+        rows = [line.split("\t") for line in make_reference_text.Page(text).render() if line.startswith("tr\t")]
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0][2], "Everything an application is made with.")
+        for row in rows[1:]:
+            self.assertEqual(len(row), 3)
+            self.assertFalse(row[1].rstrip().endswith("-"), row)
+            self.assertEqual(row[2], "")
+
+
 if __name__ == "__main__":
     unittest.main()

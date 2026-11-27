@@ -234,6 +234,12 @@ reference-page::part(find-current) {
   border: 1px solid role(find-line);
   border-radius: 0;
 }
+/* Selected text: the reader's selection, behind the ink. */
+reference-page::part(selection) {
+  background: #cde3fb;
+  border: none;
+  border-radius: 0;
+}
 reference-page::part(preview) {
   background: #f7f7f5;
   border: 1px solid role(rule-line);
