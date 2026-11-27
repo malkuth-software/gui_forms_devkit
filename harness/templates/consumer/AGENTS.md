@@ -4,9 +4,16 @@
 SDK with gui_forms_devkit (the commit `harness.lock` pins, checked out at
 `.devkit/`).
 
+## House style
+
+Read `.devkit/HOUSE_STYLE.md` in full before writing code: it is the house
+style GUI.Forms itself is written in, sections ordered by importance.
+`python3 build.py check` checks the mechanical part; where a check and
+HOUSE_STYLE.md disagree, HOUSE_STYLE.md wins.
+
 ## Building on GUI.Forms
 
-GUI.Forms and the programs built on it are retained mode. Keep
+Follow house style. GUI.Forms and the programs built on it are retained mode. Keep
 immediate-mode paradigms to the situations where their use is obvious and
 sensible, such as games that must update constantly. Most programs should
 follow the behaviour of the reference application code in `reference/`
