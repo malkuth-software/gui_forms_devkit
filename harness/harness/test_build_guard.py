@@ -194,6 +194,21 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(record['objects']['views/v.o']['inputs'][0], 'views/v.hpp')
         self.assertEqual(record['build_dir'], 'build')
 
+    def test_the_deps_record_leaves_out_links(self) -> None:
+        text: str = ('views/v.o: #deps 1, deps mtime 1 (VALID)\n    /usr/include/stdio.h\n\n'
+                     'app_tests: #deps 2, deps mtime 1 (VALID)\n    views/v.o\n    libview.a\n\n'
+                     'views/w.obj: #deps 1, deps mtime 1 (VALID)\n    /usr/include/stdio.h\n\n')
+        record: dict[str, Any] = guard.deps_record(self.workspace.root, self.workspace.build, text)
+        self.assertEqual(sorted(record['objects']), ['views/v.o', 'views/w.obj'])
+
+    def test_a_recorded_link_is_not_projected(self) -> None:
+        self.record_objects(4)
+        record: dict[str, Any] = json.loads((self.workspace.root / guard.DEPS_RECORD).read_text(encoding='utf-8'))
+        inputs: list[str] = ['build/obj/0.o']
+        record['objects']['app_tests'] = {'inputs': inputs, 'digest': 'recorded with its objects built'}
+        Workspace.write(self.workspace.root / guard.DEPS_RECORD, record)
+        self.assertEqual(self.kinds(self.workspace.inputs()), [])
+
     def test_a_runtime_to_build_is_a_warning_not_a_stop(self) -> None:
         shutil.rmtree(self.workspace.runtime)
         findings: list[guard.Finding] = guard.check(self.workspace.inputs())
